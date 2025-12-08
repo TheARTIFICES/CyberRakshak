@@ -2,26 +2,29 @@ import uuid
 import os
 import ipaddress
 from fastapi_cache.decorator import cache
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Query 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.security import OAuth2PasswordRequestForm # <--- Security Import
-from fastapi.responses import FileResponse, StreamingResponse
-from sqlmodel import Session, select
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlmodel import Session, select, or_, col, text
 from app.database import get_session
 from app.models import Job, JobStatus, AuditLog, VulnerabilityMetadata, User, Notification
 from app.worker.tasks import run_scan_task
 from app.graph import build_attack_graph
 from app.reporting import generate_pdf_report
 from app.chat_assistant import chat_assistant_service
-from app.auth import create_access_token, get_current_user, verify_password # <--- Auth Import
+from app.auth import create_access_token, get_current_user, verify_password
 from app.remediation import get_remediation
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Union, Literal
 import asyncio
 from datetime import datetime
-from app.remediation import get_remediation
+from app.utils.exploitdb import sync_exploitdb
+from app.utils.cisa_sync import sync_cisa_kev
 
+
+# --- FIX: Updated Import ---
+from app.utils.nvd_sync import sync_nvd 
 
 # === Configuration Models ===
 class NmapConfig(BaseModel):
@@ -188,7 +191,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), ses
 def start_scan(
     request: ScanStartRequest, 
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     worker_config = {}
     
@@ -233,29 +236,46 @@ def start_scan(
 @router.get("/scan/status/{job_id}", response_model=ScanStatusResponse)
 def get_scan_status(
     job_id: uuid.UUID, 
+    include_results: bool = False, 
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     job = session.get(Job, job_id)
     if not job: raise HTTPException(status_code=404, detail="Job not found")
+    
     return ScanStatusResponse(
-        job_id=job.id, status=job.status, target=job.target, created_at=str(job.created_at),
-        scanners_requested=job.scanners_requested, tool_status=job.tool_status, results=job.normalized_report 
+        job_id=job.id, 
+        status=job.status, 
+        target=job.target, 
+        created_at=str(job.created_at),
+        scanners_requested=job.scanners_requested, 
+        tool_status=job.tool_status, 
+        results=job.normalized_report if include_results else None 
     )
 
 @router.get("/scan/logs", tags=["Audit"])
 def get_audit_logs(
-    limit: int = 50, 
+    limit: int = 50,
+    search: Optional[str] = None,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
-    return session.exec(select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit)).all()
+    query = select(AuditLog).order_by(AuditLog.timestamp.desc())
+    
+    if search:
+        # Cast JSON details to string for searching
+        query = query.where(or_(
+            col(AuditLog.event_type).contains(search),
+            col(AuditLog.details).cast(str).contains(search)
+        ))
+        
+    return session.exec(query.limit(limit)).all()
 
 @router.get("/scan/graph/{job_id}")
 def get_scan_graph(
     job_id: uuid.UUID, 
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     job = session.get(Job, job_id)
     if not job: raise HTTPException(status_code=404, detail="Job not found")
@@ -277,7 +297,6 @@ async def stream_chat_response(
     user: User = Depends(get_current_user)
 ):
     async def event_generator():
-        # Pass history to the service
         async for chunk in chat_assistant_service.stream_response(request.message, request.history):
             yield chunk
             await asyncio.sleep(0.01)
@@ -290,7 +309,7 @@ async def stream_chat_response(
 @cache(expire=60)
 def get_dashboard_stats(
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     jobs = session.exec(select(Job).where(Job.status == JobStatus.COMPLETED)).all()
     total_vulns = 0; critical = 0; high = 0; medium = 0; low = 0; open_ports = 0
@@ -339,9 +358,15 @@ def get_dashboard_stats(
 @router.get("/assets", response_model=List[AssetResponse])
 @cache(expire=60)
 def get_assets(
-    skip: int = 0, limit: int = 100, 
+    skip: int = 0, 
+    limit: int = 100, 
+    # New Filter Parameters
+    risk: Optional[List[str]] = Query(None),
+    exposure: Optional[List[str]] = Query(None),
+    os_type: Optional[List[str]] = Query(None, alias="os"),
+    cloud: Optional[List[str]] = Query(None),
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     jobs = session.exec(select(Job).where(Job.status == JobStatus.COMPLETED).order_by(Job.created_at.desc())).all()
     assets_map = {} 
@@ -355,31 +380,72 @@ def get_assets(
         name = hostnames[0] if hostnames else ip
         
         vulns = job.normalized_report.get("vulnerabilities", [])
-        risk = "Low"
+        asset_risk = "Low"
         for v in vulns:
             sev = v.get("severity", "").lower()
-            if sev == "critical": risk = "Critical"; break
-            if sev == "high" and risk != "Critical": risk = "High"
-            if sev == "medium" and risk not in ["Critical", "High"]: risk = "Medium"
+            if sev == "critical": asset_risk = "Critical"; break
+            if sev == "high" and asset_risk != "Critical": asset_risk = "High"
+            if sev == "medium" and asset_risk not in ["Critical", "High"]: asset_risk = "Medium"
 
         asset_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, name))
-        exposure = "Internet-facing" if not is_private_ip(ip) else "Internal"
+        
+        # Determine Exposure
+        is_exposed = not is_private_ip(ip)
+        exposure_val = "Internet-facing" if is_exposed else "Internal"
+        
+        # Determine OS (simple heuristic)
+        # In a real app, this would come from Nmap OS detection in the report
+        os_val = "Unknown"
+        if "linux" in str(job.normalized_report).lower(): os_val = "Linux"
+        elif "windows" in str(job.normalized_report).lower(): os_val = "Windows"
         
         if asset_id not in assets_map:
             assets_map[asset_id] = AssetResponse(
-                id=uuid.UUID(asset_id), name=name, ip=ip, os="Unknown",
-                exposure=exposure, risk=risk, cloud="On-Prem",
+                id=uuid.UUID(asset_id), name=name, ip=ip, os=os_val,
+                exposure=exposure_val, risk=asset_risk, cloud="On-Prem",
                 discovered_by="Scanner", last_seen=str(job.created_at)[:10]
             )
 
-    return list(assets_map.values())[skip : skip + limit]
+    # Convert to list for filtering
+    all_assets = list(assets_map.values())
+    filtered_assets = []
+
+    # Apply Filters
+    for asset in all_assets:
+        # Risk Filter
+        if risk and asset.risk not in risk:
+            continue
+        
+        # Exposure Filter
+        if exposure and asset.exposure not in exposure:
+            continue
+            
+        # OS Filter (Partial Match)
+        if os_type:
+            # Check if any selected OS string is in the asset OS string
+            if not any(o.lower() in asset.os.lower() for o in os_type):
+                continue
+        
+        # Cloud Filter
+        if cloud and asset.cloud not in cloud:
+            continue
+            
+        filtered_assets.append(asset)
+
+    return filtered_assets[skip : skip + limit]
+
 
 @router.get("/vulnerabilities", response_model=List[VulnerabilityResponse])
 @cache(expire=60)
 def get_vulnerabilities(
-    skip: int = 0, limit: int = 100, 
+    skip: int = 0, 
+    limit: int = 100,
+    # New Filters
+    severity: Optional[List[str]] = Query(None),
+    tool: Optional[List[str]] = Query(None),
+    search: Optional[str] = None,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     jobs = session.exec(select(Job).where(Job.status == JobStatus.COMPLETED).order_by(Job.created_at.desc())).all()
     all_vulns = []
@@ -391,31 +457,35 @@ def get_vulnerabilities(
         asset_name = host_info.get("hostnames", [None])[0] or host_info.get("ip") or job.target
         
         for v in vulns:
-            cve = v.get("cve")
-            if not cve:
-                enrichment = v.get("enrichment", {})
-                cve = enrichment.get("cve_id") or "N/A"
+            # --- Extract Data ---
+            cve = v.get("cve") or v.get("enrichment", {}).get("cve_id") or "N/A"
+            title = v.get("title", "Unknown")
+            tool_name = v.get("tool", "Unknown")
+            sev = v.get("severity", "info").title()
             
-            cvss_raw = v.get("cvss_score")
-            if not cvss_raw:
-                enrichment = v.get("enrichment", {})
-                nvd_data = enrichment.get("nvd_data")
-                if isinstance(nvd_data, dict): cvss_raw = nvd_data.get("score")
-
+            # --- APPLY FILTERS (Python side due to JSON storage) ---
+            if severity and sev not in severity: continue
+            if tool and tool_name not in tool: continue
+            
+            # Search Logic (Asset, Title, CVE)
+            if search:
+                search_lower = search.lower()
+                if (search_lower not in asset_name.lower() and 
+                    search_lower not in title.lower() and 
+                    search_lower not in cve.lower()):
+                    continue
+            
+            # --- Map Data ---
+            cvss_raw = v.get("cvss_score") or v.get("enrichment", {}).get("nvd_data", {}).get("score")
             try: cvss = float(cvss_raw) if cvss_raw else 0.0
             except (ValueError, TypeError): cvss = 0.0
 
-            description = v.get("description")
-            if not description:
-                enrichment = v.get("enrichment", {})
-                nvd_data = enrichment.get("nvd_data")
-                if isinstance(nvd_data, dict): description = nvd_data.get("description")
-            if not description: description = "No description provided."
+            description = v.get("description") or v.get("enrichment", {}).get("nvd_data", {}).get("description") or "No description."
 
             all_vulns.append(VulnerabilityResponse(
-                id=uuid.uuid4(), cve=cve, title=v.get("title", "Unknown"),
-                description=description, severity=v.get("severity", "info").title(),
-                cvss=cvss, asset=asset_name, tool=v.get("tool", "Unknown"),
+                id=uuid.uuid4(), cve=cve, title=title,
+                description=description, severity=sev,
+                cvss=cvss, asset=asset_name, tool=tool_name,
                 date=str(job.created_at)[:10]
             ))
 
@@ -425,7 +495,7 @@ def get_vulnerabilities(
 def get_job_history(
     skip: int = 0, limit: int = 100, 
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     jobs = session.exec(select(Job).order_by(Job.created_at.desc()).offset(skip).limit(limit)).all()
     return [
@@ -438,15 +508,31 @@ def get_job_history(
 
 @router.get("/reports", response_model=List[ReportResponse])
 def get_reports(
-    skip: int = 0, limit: int = 100, 
+    skip: int = 0, limit: int = 100,
+    # New Filters
+    status_filter: Optional[List[str]] = Query(None, alias="status"),
+    search: Optional[str] = None,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
-    jobs = session.exec(select(Job).where(Job.status == JobStatus.COMPLETED).order_by(Job.created_at.desc()).offset(skip).limit(limit)).all()
+    query = select(Job).order_by(Job.created_at.desc())
+    
+    # Filter by Status (Completed, Failed, etc.)
+    if status_filter:
+        # Map frontend "Available" to backend "completed" if needed, or pass exact status
+        # Assuming frontend passes "completed", "failed", etc.
+        query = query.where(col(Job.status).in_(status_filter))
+    
+    # Search by Target
+    if search:
+        query = query.where(col(Job.target).contains(search))
+
+    jobs = session.exec(query.offset(skip).limit(limit)).all()
+    
     return [
         ReportResponse(
             id=job.id, name=f"Scan Report - {job.target}", type="Vulnerability Scan",
-            date=str(job.created_at)[:10], status="Available"
+            date=str(job.created_at)[:10], status=job.status
         )
         for job in jobs
     ]
@@ -454,7 +540,7 @@ def get_reports(
 @router.get("/reports/stats", response_model=ReportStatsResponse)
 def get_report_stats(
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     total = session.exec(select(Job)).all()
     completed = [j for j in total if j.status == JobStatus.COMPLETED]
@@ -469,7 +555,7 @@ def get_report_stats(
 @router.get("/threat-intel/summary", response_model=ThreatIntelSummaryResponse)
 def get_threat_intel_summary(
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     total_cve = len(session.exec(select(VulnerabilityMetadata)).all())
     cisa_kev_count = len(session.exec(select(VulnerabilityMetadata).where(VulnerabilityMetadata.is_cisa_kev == True)).all())
@@ -482,13 +568,72 @@ def get_threat_intel_summary(
         most_recent_sync=str(last_sync.strftime('%Y-%m-%d %H:%M')) if last_sync else "N/A"
     )
 
+@router.post("/threat-intel/sync-exploitdb")
+def trigger_exploitdb_sync(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user)
+):
+    """
+    Triggers a background task to sync ExploitDB data.
+    """
+    background_tasks.add_task(sync_exploitdb)
+    return {"status": "ExploitDB sync started in background"}
+
 @router.get("/threat-intel/feed", response_model=List[VulnerabilityMetadata])
 def get_threat_intel_feed(
-    skip: int = 0, limit: int = 50, 
+    skip: int = 0, limit: int = 50,
+    # New Filters
+    severity: Optional[List[str]] = Query(None),
+    exploit_status: Optional[str] = None, # "Exploit Available", "No Exploit", "All"
+    search: Optional[str] = None,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
-    return session.exec(select(VulnerabilityMetadata).order_by(VulnerabilityMetadata.last_updated.desc()).offset(skip).limit(limit)).all()
+    query = select(VulnerabilityMetadata).order_by(VulnerabilityMetadata.last_updated.desc())
+
+    if severity:
+        # Note: NVD severity is often UPPERCASE in DB
+        upper_sev = [s.upper() for s in severity]
+        query = query.where(col(VulnerabilityMetadata.severity).in_(upper_sev))
+
+    if exploit_status:
+        if exploit_status == "Exploit Available":
+            query = query.where(VulnerabilityMetadata.has_exploit == True)
+        elif exploit_status == "No Known Exploit":
+            query = query.where(VulnerabilityMetadata.has_exploit == False)
+
+    if search:
+        # Search ID or Description
+        query = query.where(or_(
+            col(VulnerabilityMetadata.cve_id).contains(search.upper()),
+            col(VulnerabilityMetadata.description).contains(search)
+        ))
+
+    return session.exec(query.offset(skip).limit(limit)).all()
+
+@router.post("/threat-intel/sync-cisa")
+def trigger_cisa_sync(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user)
+):
+    """
+    Triggers a background task to sync CISA KEV data.
+    """
+    background_tasks.add_task(sync_cisa_kev)
+    return {"status": "CISA KEV sync started in background"}
+
+# --- FIX: Threat Intel Sync Trigger ---
+@router.post("/threat-intel/sync")
+def trigger_threat_intel_sync(
+    background_tasks: BackgroundTasks,
+    days: int = 30,
+    user: User = Depends(get_current_user)
+):
+    """
+    Triggers a background task to sync NVD data.
+    """
+    background_tasks.add_task(sync_nvd, days_back=days)
+    return {"status": "Sync started in background", "days": days}
 
 def remove_file(path: str):
     try: os.remove(path)
@@ -499,7 +644,7 @@ def get_scan_report_pdf(
     job_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
-    user: User = Depends(get_current_user) # <--- Protected
+    user: User = Depends(get_current_user)
 ):
     job = session.get(Job, job_id)
     if not job: raise HTTPException(status_code=404, detail="Job not found")
@@ -542,38 +687,6 @@ def get_remediation_plan(
         })
         
     # Sort by Severity (Critical first)
-    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    remediation_plan.sort(key=lambda x: severity_order.get(x["severity"].lower(), 4))
-
-    return remediation_plan
-
-@router.get("/remediation/{job_id}")
-def get_remediation_plan(
-    job_id: uuid.UUID, 
-    session: Session = Depends(get_session),
-    user: User = Depends(get_current_user)
-):
-    job = session.get(Job, job_id)
-    if not job or not job.normalized_report:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    vulns = job.normalized_report.get("vulnerabilities", [])
-    remediation_plan = []
-
-    for v in vulns:
-        if v.get("severity", "").lower() == "info": continue
-
-        fix = get_remediation(v)
-        remediation_plan.append({
-            "cve": v.get("cve") or v.get("enrichment", {}).get("cve_id") or "N/A",
-            "title": v.get("title"),
-            "severity": v.get("severity"),
-            "asset": v.get("asset") or job.target,
-            "action": fix["action"],
-            "source": fix["source"]
-        })
-        
-    # Sort Critical first
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     remediation_plan.sort(key=lambda x: severity_order.get(x["severity"].lower(), 4))
 

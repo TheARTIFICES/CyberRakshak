@@ -9,11 +9,11 @@ import GeoThreatMap from "../components/dashboard/GeoThreatMap";
 import RecentActivity from "../components/dashboard/RecentActivity";
 import UnifiedCyberScore from "../components/dashboard/UnifiedCyberScore";
 import AiInsightsPanel from "../components/dashboard/AiInsightsPanel";
-import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge, Info } from "lucide-react";
-import { getDashboardStats } from "../services/api";
+import TotalSolutionsProvided from "../components/dashboard/TotalSolutionsProvided"; // <-- Import
+import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge } from "lucide-react";
+import { getDashboardStats, getJobHistory } from "../services/api";
 
 const Dashboard = () => {
-  // State for real data
   const [stats, setStats] = useState({
     total_vulnerabilities: 0,
     critical_findings: 0,
@@ -27,21 +27,77 @@ const Dashboard = () => {
     internet_exposed: 0,
     high_risk_assets: 0,
     cloud_assets: 0,
-    asset_distribution: {} // <--- Added this field
+    asset_distribution: {} as Record<string, number>
   });
 
-  // Fetch data on mount
+  const [recentScans, setRecentScans] = useState<any[]>([]);
+
+  // New state for the chart
+  const [solutionTrend, setSolutionTrend] = useState<{ day: string; value: number }[]>([]);
+  const [totalSolutions, setTotalSolutions] = useState(0);
+
   useEffect(() => {
-    const fetchDashboardStats = async () => {
+    const fetchData = async () => {
       try {
-        const data = await getDashboardStats();
-        setStats(data);
+        const [statsData, jobsData] = await Promise.all([
+          getDashboardStats(),
+          getJobHistory(0, 50) // Fetch enough history to calculate trends
+        ]);
+
+        setStats(statsData);
+
+        // 1. Process Recent Activity
+        if (Array.isArray(jobsData)) {
+          const mappedScans = jobsData.slice(0, 3).map((job: any) => ({
+            tool: job.scanners_used?.[0] || "Unknown",
+            target: job.target,
+            status: job.status.charAt(0).toUpperCase() + job.status.slice(1)
+          }));
+          setRecentScans(mappedScans);
+
+          // 2. Process "Total Solutions" Trend (Completed Scans over last 7 days)
+          const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const today = new Date();
+          const last7Days = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(today.getDate() - (6 - i));
+            return d;
+          });
+
+          // Initialize counters
+          const trendMap = last7Days.reduce((acc, date) => {
+            acc[date.toDateString()] = 0;
+            return acc;
+          }, {} as Record<string, number>);
+
+          // Count completed jobs
+          let completedCount = 0;
+          jobsData.forEach((job: any) => {
+            if (job.status === "completed" || job.status === "partial_success") {
+              completedCount++;
+              const jobDate = new Date(job.created_at).toDateString();
+              if (trendMap[jobDate] !== undefined) {
+                trendMap[jobDate]++;
+              }
+            }
+          });
+
+          setTotalSolutions(completedCount);
+
+          // Format for chart
+          const chartData = last7Days.map(date => ({
+            day: days[date.getDay()],
+            value: trendMap[date.toDateString()]
+          }));
+          setSolutionTrend(chartData);
+        }
+
       } catch (error) {
-        console.error("Failed to fetch dashboard stats:", error);
+        console.error("Failed to fetch dashboard data:", error);
       }
     };
 
-    fetchDashboardStats();
+    fetchData();
   }, []);
 
   return (
@@ -49,131 +105,68 @@ const Dashboard = () => {
 
       {/* KPI SECTION */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-
         <KpiCard
           title="Total Vulnerabilities"
           value={stats.total_vulnerabilities.toLocaleString()}
           icon={Bug}
           color="#dc2626"
         />
-
         <KpiCard
           title="Critical Findings"
           value={stats.critical_findings.toLocaleString()}
           icon={AlertTriangle}
           color="#ea580c"
         />
-
         <KpiCard
           title="High Findings"
           value={stats.high_findings.toLocaleString()}
           icon={Flame}
           color="#f97316"
         />
-
         <KpiCard
           title="Asset Criticality Score"
           value={stats.asset_criticality_score.toLocaleString()}
           icon={ShieldHalf}
           color="#0ea5e9"
         />
-
         <KpiCard
           title="Open Ports Detected"
           value={stats.open_ports_detected.toLocaleString()}
           icon={Radio}
           color="#6366f1"
         />
-
         <KpiCard
-          title="Unified CyberScore"
+          title="CyRa Score"
           value={stats.unified_cyber_score}
           icon={Gauge}
           color="#16a34a"
         />
-
       </section>
 
       {/* MAIN WIDGET GRID */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
-          <GlobalRiskScore />
+          <GlobalRiskScore score={stats.unified_cyber_score} />
         </div>
 
-        {/* REPLACED CLOUD POSTURE CARD WITH TOTAL SOLUTIONS PROVIDED */}
+        {/* Dynamic Solutions Chart */}
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
-          <div className="flex justify-between items-start">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Total Solutions Provided</h3>
-            <Info className="w-5 h-5 text-slate-400" />
-          </div>
-          
-          <div className="relative w-full h-full flex flex-col justify-between overflow-hidden mt-4">
-            {/* Top Stats */}
-            <div className="z-10">
-              <h3 className="text-3xl font-bold text-emerald-500">8,942</h3>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-1">Solutions Deployed</p>
-            </div>
-            
-            {/* The Chart Visual */}
-            <div className="absolute bottom-0 left-0 right-0 h-[70%]">
-              {/* Grid Lines */}
-              <div className="absolute inset-0">
-                {[...Array(5)].map((_, i) => (
-                  <div 
-                    key={i} 
-                    className="absolute w-full border-t border-slate-200 dark:border-slate-700"
-                    style={{ bottom: `${i * 25}%` }}
-                  ></div>
-                ))}
-              </div>
-              
-              {/* X-Axis Labels */}
-              <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2 text-xs text-slate-400">
-                <span>Mon</span>
-                <span>Tue</span>
-                <span>Wed</span>
-                <span>Thu</span>
-                <span>Fri</span>
-                <span>Sat</span>
-                <span>Sun</span>
-              </div>
-              
-              {/* Area Chart */}
-              <svg className="absolute bottom-4 left-0 right-0 h-[80%]" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="rgba(16, 185, 129, 0.2)" />
-                    <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
-                  </linearGradient>
-                </defs>
-                
-                {/* Area */}
-                <path 
-                  d="M0,100 L0,70 Q10,60 20,55 Q30,50 40,45 Q50,40 60,35 Q70,30 80,25 Q90,20 100,10 L100,100 Z" 
-                  fill="url(#areaGradient)" 
-                />
-                
-                {/* Line */}
-                <path 
-                  d="M0,70 Q10,60 20,55 Q30,50 40,45 Q50,40 60,35 Q70,30 80,25 Q90,20 100,10" 
-                  stroke="#10b981" 
-                  strokeWidth="2" 
-                  fill="none" 
-                />
-              </svg>
-            </div>
-          </div>
+          <TotalSolutionsProvided data={solutionTrend} total={totalSolutions} />
         </div>
 
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
-          <ExternalAttackSurface />
+          <ExternalAttackSurface stats={{
+            total: stats.total_assets,
+            exposed: stats.internet_exposed,
+            cloud: stats.cloud_assets
+          }} />
         </div>
       </section>
 
       {/* SECOND ROW */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
-          <AssetDistribution />
+          <AssetDistribution distribution={stats.asset_distribution} />
         </div>
 
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
@@ -181,7 +174,12 @@ const Dashboard = () => {
         </div>
 
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
-          <CvssDistribution />
+          <CvssDistribution stats={{
+            critical: stats.critical_findings,
+            high: stats.high_findings,
+            medium: stats.medium_findings,
+            low: stats.low_findings
+          }} />
         </div>
       </section>
 
@@ -192,14 +190,14 @@ const Dashboard = () => {
         </div>
 
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[360px]">
-          <RecentActivity />
+          <RecentActivity recentScans={recentScans} />
         </div>
       </section>
 
       {/* UNIFIED CYBERSCORE + AI INSIGHTS */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
-          <UnifiedCyberScore />
+          <UnifiedCyberScore score={stats.unified_cyber_score} />
         </div>
         <div className="bg-white dark:bg-slate-800 shadow rounded-xl p-6 min-h-[260px]">
           <AiInsightsPanel />

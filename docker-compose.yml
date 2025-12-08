@@ -23,6 +23,9 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      # Set consumer timeout to 24 hours (default is 30 mins)
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 86400000
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]

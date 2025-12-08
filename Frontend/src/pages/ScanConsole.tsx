@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import ScanTargetPanel from "../components/scan/ScanTargetPanel";
 import ScanHistory from "../components/scan/ScanHistory";
 import ScannerList from "../components/scan/ScannerList";
 import ScannerConfigDrawer from "../components/scan/ScannerConfigDrawer";
-import LogTerminal from "../components/scan/LogTerminal";
 import { startScan, getScanStatus } from "../services/api";
 
 interface ActiveScan {
@@ -17,13 +15,14 @@ interface ActiveScan {
   startTime: Date;
 }
 
-type ScanProfile = "quick" | "deep" | "custom";
+type ScanProfile = "quick" | "deep" | "web" | "network" | "custom";
 
 const ScanConsole = () => {
   const navigate = useNavigate();
+  
   // DEFAULT: Nmap selected by default
   const [selectedScanners, setSelectedScanners] = useState<Record<string, boolean>>({
-    nmap: true, // DEFAULT SELECTION
+    nmap: true, 
     nuclei: false,
     zap: false,
     nikto: false,
@@ -38,11 +37,10 @@ const ScanConsole = () => {
   const [target, setTarget] = useState("");
   const [targetError, setTargetError] = useState<string | null>(null);
   const [activeScans, setActiveScans] = useState<ActiveScan[]>([]);
-  const [logs, setLogs] = useState<string[]>([]);
   const [historyKey, setHistoryKey] = useState(0);
   const [scanProfile, setScanProfile] = useState<ScanProfile>("quick");
 
-  // --- NEW: Notification State ---
+  // --- Notification State ---
   const [notifyEmail, setNotifyEmail] = useState(false);
   const [emailList, setEmailList] = useState("");
   // -------------------------------
@@ -71,22 +69,53 @@ const ScanConsole = () => {
     return true;
   };
 
-  // Apply scan profile settings
+  // --- SCAN PROFILES LOGIC ---
   useEffect(() => {
+    const resetScanners = {
+      nmap: false, nuclei: false, zap: false, nikto: false,
+      metasploit: false, openvas: false, wappalyzer: false, nessus: false
+    };
+
     if (scanProfile === "quick") {
-      // Quick Scan: Nmap with -T4 -F arguments
+      // Quick Scan: Nmap, ZAP, Metasploit, Wappalyzer
+      setSelectedScanners({ ...resetScanners, nmap: true, zap: true, metasploit: true, wappalyzer: true });
       setScannerConfigs((prev) => ({
         ...prev,
-        nmap: { args: "-T4 -F" },
+        nmap: { speed: "T4", raw_args: ["-F"] }, // Fast scan
+        zap: { mode: "baseline" }
       }));
-    } else if (scanProfile === "deep") {
-      // Deep Audit: Nmap with -A -p- arguments
+    } 
+    else if (scanProfile === "deep") {
+      // Deep Scan: All except Nessus
+      setSelectedScanners({ ...resetScanners, nmap: true, nuclei: true, zap: true, nikto: true, metasploit: true, openvas: true, wappalyzer: true });
       setScannerConfigs((prev) => ({
         ...prev,
-        nmap: { args: "-A -p-" },
+        nmap: { raw_args: ["-A", "-p-"] }, // Aggressive, all ports
+        zap: { mode: "full" },
+        openvas: { profile: "Full and fast" },
+        nuclei: { severity: "critical,high,medium,low" }
       }));
     }
-    // Custom: Keep existing configs
+    else if (scanProfile === "web") {
+      // Web App Attack: SQLi, XSS focus
+      setSelectedScanners({ ...resetScanners, zap: true, nuclei: true, nikto: true, wappalyzer: true });
+      setScannerConfigs((prev) => ({
+        ...prev,
+        nuclei: { tags: "sqli,xss,cve" },
+        zap: { mode: "full" },
+        nikto: { tuning: "49" } // 4=XSS, 9=SQL Injection
+      }));
+    }
+    else if (scanProfile === "network") {
+      // Network Infrastructure
+      setSelectedScanners({ ...resetScanners, nmap: true, openvas: true, metasploit: true });
+      setScannerConfigs((prev) => ({
+        ...prev,
+        nmap: { raw_args: ["-sV", "-O", "--script", "vuln"] },
+        openvas: { profile: "Discovery" }
+      }));
+    }
+    // Custom: Do not overwrite user selections
   }, [scanProfile]);
 
   const buildScanPayload = () => {
@@ -100,7 +129,6 @@ const ScanConsole = () => {
       }
     });
 
-    // --- NEW: Include Email Config ---
     return { 
       target, 
       scanners: scannersPayload,
@@ -206,7 +234,6 @@ const ScanConsole = () => {
       setActiveScans((prev) =>
         prev.map((s) => (s.id === scanId ? { ...s, jobId: response.job_id, status: "running" } : s))
       );
-      // Reset target after starting scan
       setTarget("");
     } catch (err: any) {
       console.error(err);
@@ -264,8 +291,10 @@ const ScanConsole = () => {
                 onChange={(e) => setScanProfile(e.target.value as ScanProfile)}
                 className="w-full p-2 rounded-lg border bg-slate-50 dark:bg-slate-900/40 text-slate-900 dark:text-slate-100 border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="quick">Quick Scan (-T4 -F)</option>
-                <option value="deep">Deep Audit (-A -p-)</option>
+                <option value="quick">Quick Scan (Fast Discovery)</option>
+                <option value="deep">Deep Audit (Full Coverage)</option>
+                <option value="web">Web App Attack (SQLi & XSS)</option>
+                <option value="network">Network Infrastructure (OS & Services)</option>
                 <option value="custom">Custom</option>
               </select>
             </div>
@@ -293,7 +322,7 @@ const ScanConsole = () => {
               {targetError && <p className="text-xs text-red-400">{targetError}</p>}
             </div>
 
-            {/* --- NEW: Email Notification UI --- */}
+            {/* Email Notification UI */}
             <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2 mb-2">
                 <input 
@@ -315,7 +344,6 @@ const ScanConsole = () => {
                 />
               )}
             </div>
-            {/* ---------------------------------- */}
 
             <button
               disabled={!canRunScan}

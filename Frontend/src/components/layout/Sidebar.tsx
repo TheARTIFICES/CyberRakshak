@@ -9,8 +9,6 @@ import {
   FileText, 
   ClipboardCheck, 
   MessageCircle, 
-  Settings, 
-  User,
   Activity 
 } from "lucide-react";
 
@@ -27,9 +25,7 @@ const menu = [
   { path: "/reports", label: "Reports", icon: FileText },
   { path: "/remediation", label: "Remediation", icon: ClipboardCheck },
   { path: "/assistant", label: "Chat Assistant", icon: MessageCircle },
-  { path: "/audit-logs", label: "Audit Logs", icon: Activity }, // <--- Added here
-  { path: "/settings", label: "Settings", icon: Settings },
-  { path: "/profile", label: "Profile", icon: User },
+  { path: "/audit-logs", label: "Audit Logs", icon: Activity },
 ];
 
 const Sidebar = () => {

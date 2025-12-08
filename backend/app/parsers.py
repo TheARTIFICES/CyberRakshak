@@ -210,7 +210,9 @@ def parse_openvas(file_path: str) -> List[Dict[str, Any]]:
         for result in root.findall(".//result"):
             name = safe_text(result, "name", "Unknown Vulnerability")
             description = safe_text(result, "description", "No description provided.")
-            severity_score = safe_text(result, "severity", "0.0")
+            
+            # FIX: Strip whitespace from severity to prevent format errors
+            severity_score = safe_text(result, "severity", "0.0").strip()
             
             try: score = float(severity_score)
             except ValueError: score = 0.0

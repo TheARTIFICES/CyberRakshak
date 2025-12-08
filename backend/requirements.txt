@@ -28,12 +28,8 @@ bcrypt==3.2.2
 python-jose[cryptography]
 python-multipart
 
-# --- AI & RAG Dependencies ---
-sentence-transformers==2.2.2
-huggingface_hub==0.13.3
-qdrant-client
-
 # --- Notifications & Reporting ---
 fastapi-mail
 matplotlib
 scipy
+httpx

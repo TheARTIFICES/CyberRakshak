@@ -1,7 +1,22 @@
 import React from "react";
-import CardHeader from "./CardHeader";
 
-const TotalSolutionsProvided = () => {
+interface Props {
+  data?: { day: string; value: number }[];
+  total?: number;
+}
+
+const TotalSolutionsProvided = ({ data, total = 0 }: Props) => {
+  // Default static data if nothing is passed (prevents empty chart crashes)
+  const chartData = data && data.length > 0 ? data : [
+    { day: "Mon", value: 0 },
+    { day: "Tue", value: 0 },
+    { day: "Wed", value: 0 },
+    { day: "Thu", value: 0 },
+    { day: "Fri", value: 0 },
+    { day: "Sat", value: 0 },
+    { day: "Sun", value: 0 },
+  ];
+
   // Chart dimensions
   const width = 400;
   const height = 200;
@@ -9,25 +24,16 @@ const TotalSolutionsProvided = () => {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  // Data points for the area chart (simulating solutions provided)
-  const data = [
-    { day: "Mon", value: 15 },
-    { day: "Tue", value: 28 },
-    { day: "Wed", value: 35 },
-    { day: "Thu", value: 52 },
-    { day: "Fri", value: 68 },
-    { day: "Sat", value: 75 },
-    { day: "Sun", value: 92 },
-  ];
-
-  // Calculate path coordinates
-  const maxValue = 100;
-  const xScale = chartWidth / (data.length - 1);
+  // Calculate dynamic scaling
+  const maxValue = Math.max(...chartData.map(d => d.value), 10); // Ensure at least 10 to avoid division by zero
+  const xScale = chartWidth / (Math.max(chartData.length - 1, 1));
   const yScale = chartHeight / maxValue;
 
-  // Generate smooth curve path using cubic bezier for smoother curves
+  // Generate smooth curve path using cubic bezier
   const getPathData = () => {
-    const points = data.map((d, i) => ({
+    if (chartData.length === 0) return "";
+
+    const points = chartData.map((d, i) => ({
       x: padding.left + i * xScale,
       y: padding.top + chartHeight - d.value * yScale,
     }));
@@ -40,7 +46,6 @@ const TotalSolutionsProvided = () => {
       const p2 = points[i + 1];
       const p3 = i < points.length - 2 ? points[i + 2] : p2;
 
-      // Calculate control points for smooth cubic bezier
       const cp1x = p1.x + (p2.x - p0.x) / 6;
       const cp1y = p1.y + (p2.y - p0.y) / 6;
       const cp2x = p2.x - (p3.x - p1.x) / 6;
@@ -54,71 +59,40 @@ const TotalSolutionsProvided = () => {
 
   const pathData = getPathData();
 
-  // Calculate last point coordinates for area closure
-  const lastPointX = padding.left + (data.length - 1) * xScale;
+  // Area path closure
+  const lastPointX = padding.left + (chartData.length - 1) * xScale;
   const firstPointX = padding.left;
   const bottomY = padding.top + chartHeight;
-
-  // Area path (closed path for gradient fill)
   const areaPath = `${pathData} L ${lastPointX} ${bottomY} L ${firstPointX} ${bottomY} Z`;
 
-  // Grid lines for Y-axis
-  const gridLines = [0, 50, 100].map((val) => ({
-    y: padding.top + chartHeight - (val * yScale),
-    label: val.toString(),
-  }));
-
   return (
-    <div className="w-full h-full flex flex-col">
-      <CardHeader
-        title="Total Solutions Provided"
-        tooltip="Cumulative number of automated patches and remediation scripts executed by CyRa this month."
-      />
+    <div className="w-full h-full flex flex-col justify-between overflow-hidden">
+      {/* Header Section - Info Icon Removed */}
+      <div className="flex justify-between items-start z-10">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Total Solutions Provided</h3>
+      </div>
 
-      <div className="w-full flex-1 flex items-center justify-center min-h-[200px]">
+      {/* Top Stats */}
+      <div className="z-10 mt-4">
+        <h3 className="text-3xl font-bold text-emerald-500">{total.toLocaleString()}</h3>
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mt-1">Solutions Deployed</p>
+      </div>
+
+      <div className="w-full flex-1 flex items-center justify-center min-h-[150px] relative">
         <svg
-          width={width}
-          height={height}
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-full"
+          className="w-full h-full absolute bottom-0"
+          preserveAspectRatio="none"
         >
-          {/* Gradient Definition */}
           <defs>
             <linearGradient id="cyanGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#14b8a6" stopOpacity="0.3" />
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
             </linearGradient>
           </defs>
 
-          {/* Grid lines (dotted) */}
-          {gridLines.map((grid, idx) => (
-            <g key={idx}>
-              <line
-                x1={padding.left}
-                y1={grid.y}
-                x2={padding.left + chartWidth}
-                y2={grid.y}
-                stroke="#94a3b8"
-                strokeWidth="1"
-                strokeDasharray="2,2"
-                opacity="0.5"
-              />
-              {/* Y-axis labels */}
-              <text
-                x={padding.left - 10}
-                y={grid.y + 4}
-                textAnchor="end"
-                fontSize="12"
-                fill="#64748b"
-                className="dark:fill-slate-400"
-              >
-                {grid.label}
-              </text>
-            </g>
-          ))}
-
-          {/* Vertical grid lines for days */}
-          {data.map((d, i) => {
+          {/* Grid lines */}
+          {chartData.map((_, i) => {
             const x = padding.left + i * xScale;
             return (
               <line
@@ -130,54 +104,22 @@ const TotalSolutionsProvided = () => {
                 stroke="#94a3b8"
                 strokeWidth="1"
                 strokeDasharray="2,2"
-                opacity="0.3"
+                opacity="0.2"
               />
             );
           })}
 
-          {/* Area chart fill */}
-          <path
-            d={areaPath}
-            fill="url(#cyanGradient)"
-            opacity="0.6"
-          />
-
-          {/* Smooth curve line */}
-          <path
-            d={pathData}
-            fill="none"
-            stroke="#06b6d4"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Data points */}
-          {data.map((d, i) => {
-            const x = padding.left + i * xScale;
-            const y = padding.top + chartHeight - d.value * yScale;
-            return (
-              <circle
-                key={i}
-                cx={x}
-                cy={y}
-                r="4"
-                fill="#06b6d4"
-                stroke="#ffffff"
-                strokeWidth="2"
-                className="dark:stroke-slate-800"
-              />
-            );
-          })}
+          <path d={areaPath} fill="url(#cyanGradient)" />
+          <path d={pathData} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
           {/* X-axis labels */}
-          {data.map((d, i) => {
+          {chartData.map((d, i) => {
             const x = padding.left + i * xScale;
             return (
               <text
                 key={i}
                 x={x}
-                y={padding.top + chartHeight + 20}
+                y={height - 5}
                 textAnchor="middle"
                 fontSize="11"
                 fill="#64748b"
@@ -194,4 +136,3 @@ const TotalSolutionsProvided = () => {
 };
 
 export default TotalSolutionsProvided;
-

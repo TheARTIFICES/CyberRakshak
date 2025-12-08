@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. The LLM Engine
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_models:/root/.ollama
+    # --- UNCOMMENT BELOW SECTIONS ON DEC 7 FOR GPU ---
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: always
+
+  # 2. Vector DB
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+    restart: always
+
+  # 3. AI Logic
+  ai-api:
+    build: .
+    container_name: ai-api
+    ports:
+      - "5000:5000"
+    environment:
+      - OLLAMA_URL=http://ollama:11434/api/generate
+      - QDRANT_HOST=qdrant
+    depends_on:
+      - qdrant
+      - ollama
+    restart: always

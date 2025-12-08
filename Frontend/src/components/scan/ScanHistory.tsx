@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FileText, Activity } from "lucide-react";
-import { getJobHistory } from "../../services/api";
+import { getJobHistory, getScanReport } from "../../services/api";
 
 interface ScanJob {
   job_id: string;
@@ -28,48 +29,19 @@ const riskColors: Record<string, string> = {
 };
 
 const ScanHistory = () => {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Mock data for demonstration
-  const mockHistory: ScanJob[] = [
-    {
-      job_id: "mock-1",
-      target: "192.168.1.45 (Database)",
-      status: "completed",
-      created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-      scanners_used: ["Nmap", "Nessus"],
-      risk: "High",
-    },
-    {
-      job_id: "mock-2",
-      target: "app.cyberrakshak.in",
-      status: "completed",
-      created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-      scanners_used: ["Nmap", "ZAP", "Nuclei"],
-      risk: "Critical",
-    },
-    {
-      job_id: "mock-3",
-      target: "10.0.0.8 (Internal)",
-      status: "failed",
-      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      scanners_used: ["Nmap"],
-      risk: "N/A",
-    },
-  ];
 
   useEffect(() => {
     const fetchHistory = async () => {
       try {
         const data = await getJobHistory();
         // @ts-ignore
-        const fetchedHistory = Array.isArray(data) && data.length > 0 ? data : mockHistory;
+        const fetchedHistory = Array.isArray(data) && data.length > 0 ? data : [];
         setHistory(fetchedHistory);
       } catch (error) {
         console.error("Failed to fetch scan history:", error);
-        // Use mock data on error
-        setHistory(mockHistory);
       } finally {
         setLoading(false);
       }
@@ -78,31 +50,33 @@ const ScanHistory = () => {
     fetchHistory();
   }, []);
 
-  const handleReportClick = (jobId: string, target: string) => {
-    alert('Opening Report Preview...');
-    // TODO: Replace with navigation logic later
-    // Example: navigate(`/reports/${jobId}`);
+  const handleReportClick = async (jobId: string) => {
+    try {
+      const blob = await getScanReport(jobId);
+      
+      if (blob.type === 'application/json') {
+        alert("Report is not ready yet or generation failed.");
+        return;
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error("Failed to open report:", error);
+      alert("Could not load report. Please try again later.");
+    }
   };
 
   const handleGraphClick = (jobId: string) => {
-    console.log("Opening Graph/Analytics...", { jobId });
-    // TODO: Navigate to graph/analytics view
+    navigate(`/attack-path?job_id=${jobId}`);
   };
 
+  // UPDATED: Show full Date and Time string
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleString(); // e.g. "12/7/2025, 4:30:00 PM"
   };
 
   if (loading) {
@@ -121,11 +95,11 @@ const ScanHistory = () => {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left bg-slate-100 dark:bg-slate-700">
-              <th className="p-3">Report Name</th>
+              <th className="p-3">Target</th>
               <th className="p-3">Tools</th>
               <th className="p-3">Status</th>
               <th className="p-3">Risk</th>
-              <th className="p-3">Date</th>
+              <th className="p-3">Start Time</th>
               <th className="p-3">Actions</th>
             </tr>
           </thead>
@@ -141,11 +115,13 @@ const ScanHistory = () => {
               history.map((item) => (
                 <tr 
                   key={item.job_id} 
-                  onClick={() => handleReportClick(item.job_id, item.target)}
-                  className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
                 >
                   <td className="p-3">
-                    <div className="flex items-center gap-3 text-cyan-400 font-medium hover:underline hover:text-cyan-300 transition-colors">
+                    <div 
+                      className="flex items-center gap-3 text-cyan-400 font-medium hover:underline hover:text-cyan-300 transition-colors cursor-pointer"
+                      onClick={() => handleReportClick(item.job_id)}
+                    >
                       <FileText size={16} />
                       <span>{item.target}</span>
                     </div>
@@ -169,7 +145,7 @@ const ScanHistory = () => {
                       {item.risk || "N/A"}
                     </span>
                   </td>
-                  <td className="p-3 opacity-80">
+                  <td className="p-3 opacity-80 whitespace-nowrap">
                     {formatDate(item.created_at)}
                   </td>
                   <td className="p-3">
@@ -179,7 +155,7 @@ const ScanHistory = () => {
                         handleGraphClick(item.job_id);
                       }}
                       className="text-gray-400 hover:text-cyan-400 transition-colors p-1"
-                      title="View Analytics"
+                      title="View Attack Graph"
                     >
                       <Activity size={18} />
                     </button>

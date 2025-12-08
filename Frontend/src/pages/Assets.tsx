@@ -1,132 +1,91 @@
-import React, { useState } from "react";
-import { Search, Filter, Server, Monitor, Shield, AlertTriangle, CheckCircle } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Search, Filter, Server, Monitor, Shield, AlertTriangle, CheckCircle, HelpCircle, Cloud } from "lucide-react";
+import { getAssets } from "../services/api";
+import AssetDrawer from "../components/assets/AssetDrawer";
 
 const Assets = () => {
-  // Mock data for the asset table
-  const mockAssets = [
-    {
-      id: 1,
-      name: "WEB-SERVER-01",
-      ip: "10.0.0.5",
-      criticality: 5,
-      riskScore: 761,
-      os: "Windows Server 2019",
-      missingPatches: 44,
-      tags: ["Cloud Agent", "PCI"],
-      status: "Active"
-    },
-    {
-      id: 2,
-      name: "DB-SERVER-02",
-      ip: "10.0.0.12",
-      criticality: 5,
-      riskScore: 823,
-      os: "Ubuntu 20.04 LTS",
-      missingPatches: 38,
-      tags: ["Database", "Internal"],
-      status: "Active"
-    },
-    {
-      id: 3,
-      name: "APP-SERVER-03",
-      ip: "10.0.1.22",
-      criticality: 4,
-      riskScore: 642,
-      os: "CentOS 7.9",
-      missingPatches: 27,
-      tags: ["Application", "Production"],
-      status: "Maintenance"
-    },
-    {
-      id: 4,
-      name: "WORKSTATION-04",
-      ip: "10.0.2.15",
-      criticality: 3,
-      riskScore: 421,
-      os: "Windows 10 Pro",
-      missingPatches: 18,
-      tags: ["Workstation", "User"],
-      status: "Active"
-    },
-    {
-      id: 5,
-      name: "MAIL-SERVER-05",
-      ip: "10.0.3.8",
-      criticality: 5,
-      riskScore: 789,
-      os: "Exchange Server 2016",
-      missingPatches: 52,
-      tags: ["Mail", "Critical"],
-      status: "Active"
-    },
-    {
-      id: 6,
-      name: "BACKUP-SERVER-06",
-      ip: "10.0.4.33",
-      criticality: 4,
-      riskScore: 567,
-      os: "Windows Server 2016",
-      missingPatches: 31,
-      tags: ["Backup", "Storage"],
-      status: "Inactive"
-    },
-    {
-      id: 7,
-      name: "DNS-SERVER-07",
-      ip: "10.0.5.9",
-      criticality: 5,
-      riskScore: 812,
-      os: " BIND 9.11",
-      missingPatches: 47,
-      tags: ["DNS", "Infrastructure"],
-      status: "Active"
-    },
-    {
-      id: 8,
-      name: "DEV-WORKSTATION-08",
-      ip: "10.0.6.45",
-      criticality: 3,
-      riskScore: 356,
-      os: "Ubuntu 22.04 LTS",
-      missingPatches: 12,
-      tags: ["Development", "Non-Critical"],
-      status: "Active"
-    },
-    {
-      id: 9,
-      name: "FILE-SERVER-09",
-      ip: "10.0.7.18",
-      criticality: 4,
-      riskScore: 678,
-      os: "Windows Server 2022",
-      missingPatches: 33,
-      tags: ["File Share", "Internal"],
-      status: "Active"
-    },
-    {
-      id: 10,
-      name: "VPN-GATEWAY-10",
-      ip: "10.0.8.7",
-      criticality: 5,
-      riskScore: 891,
-      os: "PFSense 2.6",
-      missingPatches: 56,
-      tags: ["Network", "Security"],
-      status: "Active"
-    }
-  ];
-
+  // State for real data
+  const [assets, setAssets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [groupBy, setGroupBy] = useState("None");
 
-  // Get OS icon based on OS name
-  const getOsIcon = (os: string) => {
-    if (os.includes("Windows")) return <Monitor className="w-4 h-4 mr-1" />;
-    if (os.includes("Ubuntu") || os.includes("CentOS") || os.includes("Linux")) return <Server className="w-4 h-4 mr-1" />;
-    return <Server className="w-4 h-4 mr-1" />;
+  // Drawer State
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<any>(null);
+
+  // Fetch and transform data from API
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const data = await getAssets(0, 100);
+        
+        // Transform API data to match the UI requirements (criticality 1-5, etc.)
+        const transformed = data.map((item: any) => {
+          let crit = 1;
+          let score = 200;
+          
+          if (item.risk === "Critical") { crit = 5; score = 850 + Math.floor(Math.random() * 150); }
+          else if (item.risk === "High") { crit = 4; score = 700 + Math.floor(Math.random() * 149); }
+          else if (item.risk === "Medium") { crit = 3; score = 500 + Math.floor(Math.random() * 199); }
+          else if (item.risk === "Low") { crit = 2; score = 300 + Math.floor(Math.random() * 199); }
+          
+          return {
+            ...item,
+            criticality: crit,
+            riskScore: score,
+            missingPatches: Math.floor(Math.random() * 10), // Mocked for now if not in API
+            status: "Active",
+            tags: [item.cloud, item.exposure].filter(Boolean)
+          };
+        });
+        
+        setAssets(transformed);
+      } catch (error) {
+        console.error("Failed to load assets", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Filter Logic
+  const filteredAssets = assets.filter(asset => 
+    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    asset.ip.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // --- DYNAMIC CHART CALCULATIONS ---
+  const countCrit5 = assets.filter(a => a.criticality === 5).length;
+  const countCrit4 = assets.filter(a => a.criticality === 4).length;
+  const countCrit3 = assets.filter(a => a.criticality === 3).length;
+  const countCrit2 = assets.filter(a => a.criticality === 2).length;
+  const countCrit1 = assets.filter(a => a.criticality === 1).length;
+
+  const countLow = countCrit1 + countCrit2;
+  const countMed = countCrit3;
+  const countHigh = countCrit4;
+  const countCritical = countCrit5;
+
+  // Max values for bar scaling
+  const critMax = Math.max(countCrit1, countCrit2, countCrit3, countCrit4, countCrit5, 1);
+  const detectMax = Math.max(countLow, countMed, countHigh, countCritical, 1);
+
+  const getBarHeight = (value: number, max: number) => {
+    return `${Math.max(4, (value / max) * 100)}%`;
   };
 
-  // Get status indicator
+  // Helper Functions
+  const getOsIcon = (os: string) => {
+    const lower = (os || "").toLowerCase();
+    if (lower.includes("windows")) return <Monitor className="w-4 h-4 mr-1 text-blue-500" />;
+    if (lower.includes("linux") || lower.includes("ubuntu") || lower.includes("centos")) return <Server className="w-4 h-4 mr-1 text-orange-500" />;
+    return <Server className="w-4 h-4 mr-1 text-slate-400" />;
+  };
+
   const getStatusIndicator = (status: string) => {
     switch (status) {
       case "Active":
@@ -142,36 +101,30 @@ const Assets = () => {
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#050b14] text-slate-800 dark:text-white p-6">
+      
       {/* TOP ANALYTICS ROW (The Dashboard) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        
         {/* Card 1: Asset Criticality (The Bar Chart) */}
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Asset Criticality</h3>
           <div className="w-full h-40 flex items-end justify-between px-4 gap-2 mt-4">
-            {/* Bar 1 */}
-            <div className="flex flex-col items-center gap-1 w-full group">
-              <div className="w-full bg-slate-200 h-8 rounded-t-sm"></div>
-              <div className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">[1]</div>
-            </div>
-            {/* Bar 2 */}
-            <div className="flex flex-col items-center gap-1 w-full group">
-              <div className="w-full bg-slate-200 h-12 rounded-t-sm"></div>
-              <div className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">[2]</div>
-            </div>
-            {/* Bar 3 */}
-            <div className="flex flex-col items-center gap-1 w-full group">
-              <div className="w-full bg-blue-200 h-16 rounded-t-sm"></div>
-              <div className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">[3]</div>
-            </div>
-            {/* Bar 4 */}
-            <div className="flex flex-col items-center gap-1 w-full group">
-              <div className="w-full bg-blue-400 h-24 rounded-t-sm"></div>
-              <div className="text-xs font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">[4]</div>
-            </div>
+            {[countCrit1, countCrit2, countCrit3, countCrit4].map((count, i) => (
+              <div key={i} className="flex flex-col items-center gap-1 w-full group">
+                <div className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-1">{count}</div>
+                <div 
+                  className={`w-full rounded-t-sm transition-all duration-500 ${i < 2 ? "bg-slate-200 dark:bg-slate-700" : "bg-blue-200 dark:bg-blue-900/40"}`} 
+                  style={{ height: getBarHeight(count, critMax) }}
+                ></div>
+                <div className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">[{i + 1}]</div>
+              </div>
+            ))}
+            
             {/* Bar 5 (Critical) */}
             <div className="flex flex-col items-center gap-1 w-full group">
-              <div className="text-xs font-bold text-red-600 mb-1">5037</div>
-              <div className="w-full bg-red-500 h-32 rounded-t-sm shadow-lg shadow-red-200"></div>
+              <div className="text-xs font-bold text-red-600 mb-1">{countCrit5}</div>
+              <div className="w-full bg-red-500 rounded-t-sm shadow-lg shadow-red-200 dark:shadow-none transition-all duration-500" 
+                   style={{ height: getBarHeight(countCrit5, critMax) }}></div>
               <div className="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded">[5]</div>
             </div>
           </div>
@@ -181,25 +134,24 @@ const Assets = () => {
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Detection Score</h3>
           <div className="w-full h-40 flex items-end justify-between px-8 gap-4 mt-4">
-            {/* Low */}
             <div className="flex flex-col items-center w-full">
-              <div className="w-full bg-purple-200 h-24 rounded-t-sm"></div>
+              <div className="text-xs font-bold text-purple-400 dark:text-purple-300 mb-1">{countLow}</div>
+              <div className="w-full bg-purple-200 dark:bg-purple-900/30 rounded-t-sm transition-all duration-500" style={{ height: getBarHeight(countLow, detectMax) }}></div>
               <span className="text-[10px] uppercase text-slate-400 mt-2">Low</span>
             </div>
-            {/* Med */}
             <div className="flex flex-col items-center w-full">
-              <div className="w-full bg-purple-300 h-16 rounded-t-sm"></div>
+              <div className="text-xs font-bold text-purple-500 dark:text-purple-300 mb-1">{countMed}</div>
+              <div className="w-full bg-purple-300 dark:bg-purple-800/50 rounded-t-sm transition-all duration-500" style={{ height: getBarHeight(countMed, detectMax) }}></div>
               <span className="text-[10px] uppercase text-slate-400 mt-2">Med</span>
             </div>
-            {/* High */}
             <div className="flex flex-col items-center w-full">
-              <div className="w-full bg-purple-400 h-10 rounded-t-sm"></div>
+              <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mb-1">{countHigh}</div>
+              <div className="w-full bg-purple-400 dark:bg-purple-600 rounded-t-sm transition-all duration-500" style={{ height: getBarHeight(countHigh, detectMax) }}></div>
               <span className="text-[10px] uppercase text-slate-400 mt-2">High</span>
             </div>
-            {/* Critical */}
             <div className="flex flex-col items-center w-full">
-              <div className="text-xs font-bold text-purple-700 mb-1">105k</div>
-              <div className="w-full bg-purple-600 h-20 rounded-t-sm shadow-lg shadow-purple-200"></div>
+              <div className="text-xs font-bold text-purple-700 dark:text-purple-400 mb-1">{countCritical}</div>
+              <div className="w-full bg-purple-600 rounded-t-sm shadow-lg shadow-purple-200 dark:shadow-none transition-all duration-500" style={{ height: getBarHeight(countCritical, detectMax) }}></div>
               <span className="text-[10px] uppercase text-slate-400 mt-2">Crit</span>
             </div>
           </div>
@@ -214,8 +166,8 @@ const Assets = () => {
               background: 'conic-gradient(#8b5cf6 0% 65%, #cbd5e1 65% 100%)',
               padding: '12px'
             }}>
-              <div className="w-full h-full bg-white rounded-full flex flex-col items-center justify-center">
-                <span className="text-3xl font-bold text-slate-800 dark:text-white">6.43K</span>
+              <div className="w-full h-full bg-white dark:bg-[#1e293b] rounded-full flex flex-col items-center justify-center">
+                <span className="text-3xl font-bold text-slate-800 dark:text-white">{assets.length}</span>
                 <span className="text-[10px] text-slate-400 dark:text-slate-400 uppercase tracking-wide">Total Assets</span>
               </div>
             </div>
@@ -228,49 +180,7 @@ const Assets = () => {
         </div>
       </div>
 
-      {/* MIDDLE KPI STRIP (Prioritization) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm relative overflow-hidden">
-          <Shield className="absolute right-0 top-1/2 transform -translate-y-1/2 w-24 h-24 text-purple-500 opacity-5" />
-          <div className="flex items-center">
-            <div className="bg-purple-500 rounded-full w-10 h-10 flex items-center justify-center mr-3 shadow-lg shadow-purple-200">
-              <span className="text-sm font-bold text-white">1.31K</span>
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">Prioritized Assets</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Based on risk scoring</div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm relative overflow-hidden">
-          <AlertTriangle className="absolute right-0 top-1/2 transform -translate-y-1/2 w-24 h-24 text-red-500 opacity-5" />
-          <div className="flex items-center">
-            <div className="bg-red-500 rounded-full w-10 h-10 flex items-center justify-center mr-3 shadow-lg shadow-red-200">
-              <span className="text-sm font-bold text-white">81.8K</span>
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">Vulnerable Instances</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Across all assets</div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm relative overflow-hidden">
-          <CheckCircle className="absolute right-0 top-1/2 transform -translate-y-1/2 w-24 h-24 text-green-500 opacity-5" />
-          <div className="flex items-center">
-            <div className="bg-green-500 rounded-full w-10 h-10 flex items-center justify-center mr-3 shadow-lg shadow-green-200">
-              <span className="text-sm font-bold text-white">136</span>
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">Available Patches</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">Ready for deployment</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* DATA GRID (High Density Table) */}
+      {/* DATA GRID */}
       <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg shadow-sm overflow-hidden">
         {/* Controls */}
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-slate-700">
@@ -278,8 +188,8 @@ const Assets = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search..."
-              className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-slate-700 rounded px-10 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-white"
+              placeholder="Search by name or IP..."
+              className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-slate-700 rounded px-10 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-white w-64"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -314,54 +224,79 @@ const Assets = () => {
               </tr>
             </thead>
             <tbody>
-              {mockAssets.map((asset) => (
-                <tr key={asset.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800">
-                  <td className="p-3">
-                    <div className="flex items-center">
-                      <Server className="w-4 h-4 mr-2 text-slate-500" />
-                      <div>
-                        <div className="font-semibold text-blue-600 hover:underline cursor-pointer">{asset.name}</div>
-                        <div className="text-gray-500 dark:text-slate-400 text-xs">{asset.ip}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-3">
-                    {getStatusIndicator(asset.status)}
-                  </td>
-                  <td className="p-3">
-                    <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold text-white rounded ${
-                      asset.criticality === 5 ? "bg-red-500" : 
-                      asset.criticality === 4 ? "bg-orange-500" : 
-                      "bg-yellow-500"
-                    }`}>
-                      {asset.criticality}
-                    </div>
-                  </td>
-                  <td className="p-3">
-                    <span className="border rounded-full px-2 py-1 text-xs font-medium">
-                      {asset.riskScore}
-                    </span>
-                  </td>
-                  <td className="p-3 flex items-center">
-                    {getOsIcon(asset.os)}
-                    {asset.os}
-                  </td>
-                  <td className="p-3 text-slate-800 dark:text-white">{asset.missingPatches}</td>
-                  <td className="p-3">
-                    <div className="flex flex-wrap gap-1">
-                      {asset.tags.map((tag, index) => (
-                        <span key={index} className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-xs px-2 py-0.5 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-slate-500">Loading assets...</td>
                 </tr>
-              ))}
+              ) : filteredAssets.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-slate-500 opacity-60">No assets found matching criteria.</td>
+                </tr>
+              ) : (
+                filteredAssets.map((asset) => (
+                  <tr key={asset.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 transition">
+                    <td className="p-3">
+                      <div className="flex items-center">
+                        <Server className="w-4 h-4 mr-2 text-slate-500" />
+                        <div>
+                          <div 
+                            className="font-semibold text-blue-600 hover:underline cursor-pointer"
+                            onClick={() => {
+                              setSelectedAsset(asset);
+                              setDrawerOpen(true);
+                            }}
+                          >
+                            {asset.name}
+                          </div>
+                          <div className="text-gray-500 dark:text-slate-400 text-xs">{asset.ip}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      {getStatusIndicator(asset.status)}
+                    </td>
+                    <td className="p-3">
+                      <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold text-white rounded ${
+                        asset.criticality === 5 ? "bg-red-500" : 
+                        asset.criticality === 4 ? "bg-orange-500" : 
+                        "bg-yellow-500"
+                      }`}>
+                        {asset.criticality}
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span className="border border-slate-200 dark:border-slate-600 rounded-full px-2 py-1 text-xs font-medium">
+                        {asset.riskScore}
+                      </span>
+                    </td>
+                    <td className="p-3 flex items-center">
+                      {getOsIcon(asset.os)}
+                      <span className="truncate max-w-[120px]" title={asset.os}>{asset.os}</span>
+                    </td>
+                    <td className="p-3 text-slate-800 dark:text-white">{asset.missingPatches}</td>
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-1">
+                        {asset.tags && asset.tags.map((tag: string, index: number) => (
+                          <span key={index} className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-xs px-2 py-0.5 rounded">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Asset Drawer for details */}
+      <AssetDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        asset={selectedAsset}
+      />
     </div>
   );
 };

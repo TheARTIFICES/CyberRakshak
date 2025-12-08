@@ -30,4 +30,4 @@ RUN playwright install --with-deps chromium
 
 # 4. Run the pre-start script and then the worker
 # CHANGED: Removed '-P solo' and added '--concurrency 4'
-CMD python worker_prestart.py && celery -A app.worker.celery_app worker --loglevel=info --concurrency=4 -Q scans
+CMD python worker_prestart.py && celery -A app.worker.celery_app worker -B --loglevel=info --concurrency=4 -Q scans

@@ -1,163 +1,192 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import AttackGraph from "../components/attack/AttackGraph";
-import { Search, Download } from "lucide-react";
+import AttackNodeDrawer from "../components/attack/AttackNodeDrawer"; // Import the Drawer
+import { Search, RefreshCw, AlertCircle } from "lucide-react";
+import { getJobHistory, getScanGraph } from "../services/api";
 
 const AttackPath = () => {
-  const [searchParams] = useSearchParams();
-  const initialJobId = searchParams.get("job_id") || "";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlJobId = searchParams.get("job_id") || "";
   
+  const [jobId, setJobId] = useState(urlJobId);
+  const [graphData, setGraphData] = useState<any>({ nodes: [], edges: [] });
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [severityFilter, setSeverityFilter] = useState("All");
-  const [techniqueFilter, setTechniqueFilter] = useState("All");
 
-  // Mock data for the attack path table
-  const mockAttackPaths = [
-    {
-      id: "#102",
-      source: "Internet",
-      target: "Database",
-      technique: "T1190 - Exploit Public-Facing Application",
-      probability: "87%",
-      severity: "Critical"
-    },
-    {
-      id: "#205",
-      source: "Workstation-04",
-      target: "Domain Controller",
-      technique: "T1003 - OS Credential Dumping",
-      probability: "92%",
-      severity: "Critical"
-    },
-    {
-      id: "#301",
-      source: "Email Attachment",
-      target: "Finance-PC",
-      technique: "T1204 - User Execution",
-      probability: "76%",
-      severity: "High"
-    },
-    {
-      id: "#412",
-      source: "Shared-Admin",
-      target: "File Server",
-      technique: "T1078 - Valid Accounts",
-      probability: "68%",
-      severity: "Medium"
-    },
-    {
-      id: "#508",
-      source: "VPN Gateway",
-      target: "Internal DNS",
-      technique: "T1133 - External Remote Services",
-      probability: "54%",
-      severity: "Low"
+  // Drawer State (Lifted Up)
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+
+  // 1. Load Latest Job if none provided
+  useEffect(() => {
+    const init = async () => {
+      if (jobId) {
+        loadGraph(jobId);
+        return;
+      }
+
+      try {
+        const jobs = await getJobHistory(0, 1);
+        const latestCompleted = jobs.find(j => j.status === "completed" || j.status === "partial_success");
+        if (latestCompleted) {
+          setJobId(latestCompleted.job_id);
+          setSearchParams({ job_id: latestCompleted.job_id });
+          loadGraph(latestCompleted.job_id);
+        } else {
+          setLoading(false);
+        }
+      } catch (e) {
+        console.error("Failed to load initial job", e);
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  // 2. Fetch Graph Data for Table
+  const loadGraph = async (id: string) => {
+    setLoading(true);
+    try {
+      const data = await getScanGraph(id);
+      if (data && data.nodes) {
+        setGraphData(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch graph data:", error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
-  // Get severity badge style
+  // 3. Handle Node Selection (From Graph or Table)
+  const handleNodeSelect = (node: any) => {
+    setSelectedNode(node);
+    setDrawerOpen(true);
+  };
+
+  // 4. Transform Graph Edges into Table Rows
+  const getTableData = () => {
+    if (!graphData.edges || !graphData.nodes) return [];
+
+    const nodeMap = new Map(graphData.nodes.map((n: any) => [n.id, n]));
+
+    return graphData.edges.map((edge: any) => {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+
+      // Determine severity based on target node type/style
+      let severity = "Low";
+      const targetColor = targetNode?.style?.background || "";
+      if (targetColor.includes("#ef4444") || targetColor.includes("#991b1b")) severity = "Critical"; // Red
+      else if (targetColor.includes("#f97316")) severity = "High"; // Orange
+      else if (targetColor.includes("#facc15")) severity = "Medium"; // Yellow
+
+      return {
+        id: edge.id,
+        sourceLabel: sourceNode?.data?.label || edge.source,
+        targetLabel: targetNode?.data?.label || edge.target,
+        sourceNode: sourceNode, // Store full object for click handler
+        targetNode: targetNode, // Store full object for click handler
+        type: targetNode?.type === "output" ? "Exploit Vulnerability" : "Network Connection",
+        severity,
+        probability: targetNode?.type === "output" ? "High" : "Medium"
+      };
+    });
+  };
+
+  const tableData = getTableData().filter(row => {
+    const matchesSearch = 
+      row.sourceLabel.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      row.targetLabel.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSeverity = severityFilter === "All" || row.severity === severityFilter;
+    return matchesSearch && matchesSeverity;
+  });
+
   const getSeverityBadge = (severity: string) => {
     switch (severity) {
-      case "Critical":
-        return "bg-red-500/20 text-red-500 dark:text-red-400";
-      case "High":
-        return "bg-orange-500/20 text-orange-500 dark:text-orange-400";
-      case "Medium":
-        return "bg-yellow-500/20 text-yellow-500 dark:text-yellow-400";
-      case "Low":
-        return "bg-green-500/20 text-green-500 dark:text-green-400";
-      default:
-        return "bg-gray-500/20 text-gray-500 dark:text-gray-400";
+      case "Critical": return "bg-red-500/20 text-red-600 dark:text-red-400";
+      case "High": return "bg-orange-500/20 text-orange-600 dark:text-orange-400";
+      case "Medium": return "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400";
+      default: return "bg-blue-500/20 text-blue-600 dark:text-blue-400";
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050b14] text-slate-900 dark:text-white p-6">
-      {/* Page Header - REMOVED */}
-
-      {/* LAYER 1: RISK METRICS (The "What's Wrong" Header) */}
+      
+      {/* HEADER METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Card 1: Critical Attack Paths */}
+        {/* ... Metrics ... */}
         <div className="bg-white dark:bg-[#111625]/90 border border-slate-200 dark:border-white/10 rounded-lg p-4">
-          <div className="text-2xl font-bold text-red-600 dark:text-red-500">3</div>
+          <div className="text-2xl font-bold text-red-600 dark:text-red-500">
+            {tableData.filter(r => r.severity === "Critical").length}
+          </div>
           <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Critical Attack Paths</div>
         </div>
-
-        {/* Card 2: Top Choke Point */}
         <div className="bg-white dark:bg-[#111625]/90 border border-slate-200 dark:border-white/10 rounded-lg p-4">
-          <div className="text-2xl font-bold text-purple-600 dark:text-purple-500">Admin-PC</div>
-          <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Top Choke Point</div>
+          <div className="text-2xl font-bold text-purple-600 dark:text-purple-500">
+            {graphData.nodes.length > 0 ? graphData.nodes[0]?.data?.label : "N/A"}
+          </div>
+          <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Entry Point</div>
         </div>
-
-        {/* Card 3: Asset Exposure */}
         <div className="bg-white dark:bg-[#111625]/90 border border-slate-200 dark:border-white/10 rounded-lg p-4">
-          <div className="text-2xl font-bold text-orange-600 dark:text-orange-500">85%</div>
-          <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Asset Exposure</div>
+          <div className="text-2xl font-bold text-orange-600 dark:text-orange-500">
+            {graphData.nodes.length}
+          </div>
+          <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Total Nodes Mapped</div>
         </div>
-
-        {/* Card 4: Time to Compromise */}
         <div className="bg-white dark:bg-[#111625]/90 border border-slate-200 dark:border-white/10 rounded-lg p-4">
-          <div className="text-2xl font-bold text-red-600 dark:text-red-500">{'<'} 2h</div>
-          <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Time to Compromise</div>
+          <div className="text-2xl font-bold text-blue-600 dark:text-blue-500">
+            {tableData.length}
+          </div>
+          <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Total Connections</div>
         </div>
       </div>
 
-      {/* LAYER 2: THE GRAPH VISUALIZATION */}
-      <div className="h-[500px] w-full bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-white/5 rounded-xl relative overflow-hidden mb-6">
-        {/* Grid Pattern for Light Mode */}
-        <div className="absolute inset-0 opacity-20 bg-[length:20px_20px] hidden dark:block"
-          style={{
-            backgroundImage: `radial-gradient(circle, #ffffff 1px, transparent 1px)`
-          }}
-        ></div>
-        
-        {/* Grid Pattern for Light Mode */}
-        <div className="absolute inset-0 opacity-20 bg-[length:20px_20px] block dark:hidden"
-          style={{
-            backgroundImage: `radial-gradient(circle, #cbd5e1 1px, transparent 1px)`
-          }}
-        ></div>
-
-        {/* Graph Content */}
+      {/* GRAPH VISUALIZATION */}
+      <div className="h-[600px] w-full bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-white/5 rounded-xl relative overflow-hidden mb-6">
         <div className="w-full h-full">
-          <AttackGraph initialJobId={initialJobId} />
+          {/* PASS THE HANDLER HERE */}
+          <AttackGraph initialJobId={jobId} onNodeClick={handleNodeSelect} />
         </div>
         
-        {/* Legend Overlay */}
-        <div className="absolute bottom-4 right-4 bg-white/80 dark:bg-black/40 backdrop-blur-sm border border-slate-200 dark:border-white/10 rounded-lg p-3 text-xs">
-          <div className="flex items-center mb-1">
-            <div className="w-3 h-0.5 bg-red-500 mr-2"></div>
-            <span className="text-slate-700 dark:text-gray-300">Exploit Path</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-0.5 bg-blue-500 border-dashed border-b mr-2"></div>
-            <span className="text-slate-700 dark:text-gray-300">Lateral Movement</span>
-          </div>
-        </div>
+        {!jobId && !loading && (
+           <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+             <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl text-center">
+               <AlertCircle className="w-10 h-10 text-yellow-500 mx-auto mb-3" />
+               <h3 className="text-lg font-bold">No Scan Selected</h3>
+               <p className="text-sm opacity-70 mb-4">Run a scan to generate an attack graph.</p>
+               <a href="/scan-console" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Go to Scan Console</a>
+             </div>
+           </div>
+        )}
       </div>
 
-      {/* LAYER 3: THE TABLE WITH CONCISE FILTERS */}
+      {/* TABLE SECTION */}
       <div className="bg-white dark:bg-[#111625]/90 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden">
-        {/* Header Bar with Filters */}
-        <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-white/10">
-          <div className="text-lg font-semibold text-slate-900 dark:text-white">Attack Path Details</div>
+        {/* Toolbar */}
+        <div className="flex flex-col sm:flex-row justify-between items-center p-4 border-b border-slate-200 dark:border-white/10 gap-4">
+          <div className="text-lg font-semibold text-slate-900 dark:text-white">
+            Attack Path Details 
+            {jobId && <span className="ml-2 text-xs font-normal opacity-50 font-mono">Job: {jobId.slice(0,8)}...</span>}
+          </div>
           
-          <div className="flex items-center space-x-3">
-            {/* Search Input */}
-            <div className="relative">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative flex-1 sm:flex-none">
               <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search paths..."
-                className="w-64 bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 rounded px-8 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-white"
+                className="w-full sm:w-64 bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 rounded px-8 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-white"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             
-            {/* Severity Filter */}
             <select 
-              className="bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-white"
+              className="bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 dark:text-white"
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value)}
             >
@@ -168,59 +197,71 @@ const AttackPath = () => {
               <option value="Low">Low</option>
             </select>
             
-            {/* Technique Filter */}
-            <select 
-              className="bg-white dark:bg-[#111625] border border-slate-200 dark:border-white/10 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-white"
-              value={techniqueFilter}
-              onChange={(e) => setTechniqueFilter(e.target.value)}
+            <button 
+              onClick={() => loadGraph(jobId)}
+              className="p-2 text-slate-500 hover:text-blue-500 transition border border-slate-200 dark:border-white/10 rounded"
+              title="Refresh Graph Data"
             >
-              <option value="All">All Techniques</option>
-              <option value="T1190">T1190 - Exploit</option>
-              <option value="T1003">T1003 - Credential Dumping</option>
-              <option value="T1078">T1078 - Valid Accounts</option>
-              <option value="T1204">T1204 - User Execution</option>
-            </select>
-            
-            {/* Export Button */}
-            <button className="flex items-center text-sm bg-transparent border border-slate-200 dark:border-white/20 rounded px-3 py-1.5 text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition">
-              <Download className="w-4 h-4 mr-1" />
-              Export
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
         
-        {/* Attack Path Table */}
+        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-100 dark:bg-white/5 text-left">
-                <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Path ID</th>
                 <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Source Node</th>
                 <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Target Node</th>
-                <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Technique</th>
+                <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Relationship</th>
                 <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Probability</th>
                 <th className="p-3 font-semibold text-slate-600 dark:text-slate-400 uppercase text-xs">Severity</th>
               </tr>
             </thead>
             <tbody>
-              {mockAttackPaths.map((path, index) => (
-                <tr key={index} className="border-b border-slate-200 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition">
-                  <td className="p-3 font-mono text-slate-900 dark:text-white">{path.id}</td>
-                  <td className="p-3 text-slate-900 dark:text-white">{path.source}</td>
-                  <td className="p-3 text-slate-900 dark:text-white">{path.target}</td>
-                  <td className="p-3 font-mono text-xs text-slate-900 dark:text-white">{path.technique}</td>
-                  <td className="p-3 text-slate-900 dark:text-white">{path.probability}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSeverityBadge(path.severity)}`}>
-                      {path.severity}
-                    </span>
+              {tableData.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-500">
+                    {loading ? "Loading graph data..." : "No attack paths found for this scan."}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                tableData.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-200 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition">
+                    <td 
+                      className="p-3 font-mono text-blue-600 dark:text-blue-400 cursor-pointer hover:underline"
+                      onClick={() => row.sourceNode && handleNodeSelect(row.sourceNode)}
+                    >
+                      {row.sourceLabel}
+                    </td>
+                    <td 
+                      className="p-3 font-bold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-2"
+                      onClick={() => row.targetNode && handleNodeSelect(row.targetNode)}
+                    >
+                      {row.targetLabel}
+                    </td>
+                    <td className="p-3 text-slate-600 dark:text-slate-400 italic">{row.type}</td>
+                    <td className="p-3 text-slate-900 dark:text-white">{row.probability}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSeverityBadge(row.severity)}`}>
+                        {row.severity}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* DRAWER COMPONENT */}
+      <AttackNodeDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        node={selectedNode}
+      />
     </div>
   );
 };

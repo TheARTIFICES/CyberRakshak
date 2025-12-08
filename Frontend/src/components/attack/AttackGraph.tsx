@@ -9,25 +9,22 @@ import ReactFlow, {
 } from "reactflow";
 import type { Node, Edge } from "reactflow";
 import "reactflow/dist/style.css";
-import AttackNodeDrawer from "./AttackNodeDrawer";
 import { getScanGraph } from "../../services/api";
 
 // Demo Data (Only shown if NO job ID is provided)
 const demoNodes: Node[] = [
-  { id: "internet", position: { x: 300, y: 20 }, data: { label: "Internet" }, style: { background: "#fff", border: "1px solid #777", padding: 10 } },
-  { id: "demo-web", position: { x: 300, y: 150 }, data: { label: "Demo Web Server" }, style: { background: "#fff", border: "1px solid #777", padding: 10 } }
+  { id: "internet", position: { x: 300, y: 20 }, data: { label: "Internet", node_type: "Asset" }, type: "input", style: { background: "#2563eb", color: "white" } },
+  { id: "demo-web", position: { x: 300, y: 150 }, data: { label: "Demo Web Server", node_type: "Asset" }, type: "default", style: { background: "#16a34a", color: "white" } }
 ];
 const demoEdges: Edge[] = [{ id: "e1-demo", source: "internet", target: "demo-web", animated: true }];
 
 interface Props {
   initialJobId?: string;
+  onNodeClick?: (node: any) => void; // New Prop
 }
 
-const AttackGraph = ({ initialJobId }: Props) => {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<any>(null);
-  
-  // Use React Flow hooks for better state management
+const AttackGraph = ({ initialJobId, onNodeClick }: Props) => {
+  // Use React Flow hooks for state management
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   
@@ -44,8 +41,7 @@ const AttackGraph = ({ initialJobId }: Props) => {
     
     try {
       const graphData = await getScanGraph(id);
-      console.log("Graph Data Received:", graphData);
-
+      
       if (graphData && Array.isArray(graphData.nodes) && Array.isArray(graphData.edges)) {
         if (graphData.nodes.length === 0) {
           setError("No attack path data found for this scan.");
@@ -73,44 +69,14 @@ const AttackGraph = ({ initialJobId }: Props) => {
       setJobId(initialJobId);
       fetchGraphData(initialJobId);
     } else {
-      // Show demo data only if no ID provided
       setNodes(demoNodes);
       setEdges(demoEdges);
     }
   }, [initialJobId]);
 
-  const handleJobIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setJobId(e.target.value);
-  };
-
   return (
     <>
-      {/* Job ID Input */}
-      <div className="mb-4 p-4 bg-white dark:bg-slate-800 rounded-xl shadow">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={jobId}
-            onChange={handleJobIdChange}
-            placeholder="Enter Job ID to visualize attack path"
-            className="flex-1 p-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
-          />
-          <button
-            onClick={() => fetchGraphData(jobId)}
-            disabled={loading || !jobId}
-            className={`px-4 py-2 rounded-lg ${
-              loading || !jobId
-                ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700 text-white"
-            }`}
-          >
-            {loading ? "Loading..." : "Visualize"}
-          </button>
-        </div>
-        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-      </div>
-
-      <div className="w-full h-[600px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 relative">
+      <div className="w-full h-full relative">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -118,8 +84,8 @@ const AttackGraph = ({ initialJobId }: Props) => {
           onEdgesChange={onEdgesChange}
           fitView
           onNodeClick={(_, node) => {
-            setSelectedNode(node);
-            setDrawerOpen(true);
+            // Notify parent instead of handling drawer internally
+            if (onNodeClick) onNodeClick(node);
           }}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
@@ -133,12 +99,6 @@ const AttackGraph = ({ initialJobId }: Props) => {
           </div>
         )}
       </div>
-
-      <AttackNodeDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        node={selectedNode}
-      />
     </>
   );
 };
