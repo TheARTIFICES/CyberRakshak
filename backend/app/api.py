@@ -80,6 +80,7 @@ class ScanStartRequest(BaseModel):
 class ChatMessageRequest(BaseModel):
     message: str
     history: Optional[List[Dict[str, str]]] = []
+    context_job_ids: Optional[List[str]] = []
 
 class ChatMessageResponse(BaseModel):
     response: str

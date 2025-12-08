@@ -35,7 +35,7 @@ const Sidebar = () => {
     <div
       onMouseEnter={() => setCollapsed(false)}
       onMouseLeave={() => setCollapsed(true)}
-      className={`bg-white dark:bg-slate-950 shadow-md h-screen transition-all duration-300 flex flex-col 
+      className={`bg-white dark:bg-slate-950 shadow-md h-screen sticky top-0 z-50 transition-all duration-300 flex flex-col 
       ${collapsed ? "w-16" : "w-64"}`}
     >
       <div className="h-20 flex items-center justify-center py-6">
