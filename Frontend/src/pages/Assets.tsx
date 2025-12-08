@@ -157,9 +157,9 @@ const Assets = () => {
           </div>
         </div>
 
-        {/* Card 3: Risk Score (The CSS Ring) */}
+        {/* Card 3: Total Assets (The CSS Ring) */}
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Risk Score</h3>
+          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Total Assets</h3>
           <div className="w-full h-40 flex items-center justify-center relative mt-4">
             {/* The CSS Donut */}
             <div className="w-32 h-32 rounded-full" style={{

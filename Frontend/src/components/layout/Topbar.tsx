@@ -32,7 +32,7 @@ const Topbar = () => {
   };
 
   const currentRouteInfo = routeMapping[location.pathname] || { 
-    title: "Dashboard", 
+    title: "Chat Assistant", 
     subtitle: "Security overview and analytics" 
   };
 
