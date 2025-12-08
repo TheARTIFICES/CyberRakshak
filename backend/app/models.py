@@ -66,13 +66,19 @@ class VulnerabilityMetadata(SQLModel, table=True):
     severity: Optional[str] = None
     vector_string: Optional[str] = None
 
-    # Threat Intel
+    # Threat Intel (CISA & ExploitDB - Already Stored Locally)
     is_cisa_kev: bool = Field(default=False)
     has_exploit: bool = Field(default=False)
     exploit_ids: List[str] = Field(default=[], sa_column=Column(JSON))
 
+    # --- NEW: AlienVault OTX Data (Local Storage) ---
+    otx_pulse_count: int = Field(default=0)
+    otx_tags: List[str] = Field(default=[], sa_column=Column(JSON))
+    otx_references: List[str] = Field(default=[], sa_column=Column(JSON))
+    otx_last_synced: Optional[datetime] = None
+
     # Remediation Data
     remediation: Optional[str] = None
-    remediation_source: Optional[str] = None # CISA, STATIC, AI
+    remediation_source: Optional[str] = None 
 
     last_updated: datetime = Field(default_factory=datetime.utcnow)

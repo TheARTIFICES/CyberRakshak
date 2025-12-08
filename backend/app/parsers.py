@@ -7,6 +7,13 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# --- NEW: Helper to find CVEs in text ---
+def extract_cve_from_text(text: str) -> str:
+    """Finds the first CVE-YYYY-NNNN pattern in a string."""
+    if not text: return None
+    match = re.search(r'(CVE-\d{4}-\d{4,7})', text, re.IGNORECASE)
+    return match.group(1).upper() if match else None
+
 def parse_nmap(file_path: str) -> Dict[str, Any]:
     """Parses Nmap XML output."""
     results = {"host_info": {}, "open_ports": []}
@@ -42,12 +49,20 @@ def parse_nmap(file_path: str) -> Dict[str, Any]:
                 product = service.get("product", "") if service is not None else ""
                 version = service.get("version", "") if service is not None else ""
 
+                # Try to find CVEs in script output (e.g. vulners)
+                script_output = ""
+                for script in port.findall("script"):
+                    script_output += script.get("output", "") + " "
+                
+                cve_found = extract_cve_from_text(script_output)
+
                 results["open_ports"].append({
                     "port": port_id,
                     "protocol": protocol,
                     "service": service_name,
                     "product": product,
-                    "version": version
+                    "version": version,
+                    "cve": cve_found # Pass this up if needed
                 })
     return results
 
@@ -62,22 +77,24 @@ def parse_nuclei(file_path: str) -> List[Dict[str, Any]]:
                     data = json.loads(line)
                     info = data.get("info", {})
                     
-                    # --- ENRICHMENT FIX: Extract CVE & Score ---
                     classification = info.get("classification", {})
                     cve_list = classification.get("cve-id", [])
-                    # Nuclei can return a list or null. Handle both.
                     cve_id = cve_list[0] if cve_list and isinstance(cve_list, list) else None
                     
-                    cvss_score = classification.get("cvss-score")
-                    # -------------------------------------------
+                    # Fallback: Search in description/name
+                    if not cve_id:
+                        cve_id = extract_cve_from_text(info.get("description", "")) or \
+                                 extract_cve_from_text(info.get("name", ""))
 
+                    cvss_score = classification.get("cvss-score")
+                    
                     vuln = {
                         "tool": "nuclei",
                         "title": info.get("name", "Unknown Vulnerability"),
                         "severity": info.get("severity", "info"),
                         "description": info.get("description", ""),
-                        "cve": cve_id,          # Captured CVE
-                        "cvss_score": cvss_score, # Captured Score
+                        "cve": cve_id,
+                        "cvss_score": cvss_score,
                         "template_id": data.get("template-id"),
                         "ip": data.get("ip"),
                         "port": data.get("port"),
@@ -95,32 +112,33 @@ def parse_nikto(file_path: str) -> List[Dict[str, Any]]:
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # Nikto structure varies (list vs dict)
+            
+            # Normalize structure (Nikto sometimes returns list, sometimes dict)
+            scan_items = []
             if isinstance(data, list):
-                for host_data in data:
-                    for item in host_data.get("vulnerabilities", []):
-                         vuln = {
-                            "tool": "nikto",
-                            "title": item.get("msg", "Web Server Issue"),
-                            "severity": "unknown", 
-                            "description": f"OSVDB: {item.get('osvdb', 'N/A')}. Method: {item.get('method')}",
-                            "url": item.get("url"),
-                            "id": item.get("id"),
-                            "references": [item.get("references", "")]
-                         }
-                         vulnerabilities.append(vuln)
+                for host in data: scan_items.extend(host.get("vulnerabilities", []))
             elif isinstance(data, dict):
-                 for item in data.get("vulnerabilities", []):
-                     vuln = {
-                        "tool": "nikto",
-                        "title": item.get("msg", "Web Server Issue"),
-                        "severity": "unknown",
-                        "description": f"OSVDB: {item.get('osvdb', 'N/A')}. Method: {item.get('method')}",
-                        "url": item.get("url"),
-                        "id": item.get("id"),
-                        "references": [item.get("references", "")]
-                     }
-                     vulnerabilities.append(vuln)
+                scan_items = data.get("vulnerabilities", [])
+
+            for item in scan_items:
+                 msg = item.get("msg", "Web Server Issue")
+                 desc = f"OSVDB: {item.get('osvdb', 'N/A')}. Method: {item.get('method')}. {msg}"
+                 
+                 # Look for CVE
+                 cve_id = extract_cve_from_text(msg) or extract_cve_from_text(desc)
+
+                 vuln = {
+                    "tool": "nikto",
+                    "title": msg,
+                    "severity": "unknown", 
+                    "description": desc,
+                    "cve": cve_id,
+                    "url": item.get("url"),
+                    "id": item.get("id"),
+                    "references": [item.get("references", "")]
+                 }
+                 vulnerabilities.append(vuln)
+
     except Exception as e:
         logger.error(f"Error reading Nikto file {file_path}: {e}")
     return vulnerabilities
@@ -133,11 +151,18 @@ def parse_zap(file_path: str) -> List[Dict[str, Any]]:
             data = json.load(f)
             for site in data.get("site", []):
                 for alert in site.get("alerts", []):
+                    desc = alert.get("desc", "")
+                    other = alert.get("other", "")
+                    
+                    # Look for CVE
+                    cve_id = extract_cve_from_text(desc) or extract_cve_from_text(other)
+
                     vuln = {
                         "tool": "zap",
                         "title": alert.get("name", "Unknown Vulnerability"),
                         "severity": alert.get("riskdesc", "Info").split()[0].lower(),
-                        "description": alert.get("desc", ""),
+                        "description": desc,
+                        "cve": cve_id,
                         "solution": alert.get("solution", ""),
                         "url": site.get("@name", "") + alert.get("instances", [{}])[0].get("uri", ""),
                         "references": alert.get("reference", "").split("\n")
@@ -174,20 +199,24 @@ def parse_metasploit(file_path: str) -> List[Dict[str, Any]]:
         for line in content.splitlines():
             line = line.strip()
             if not line or "deprecated" in line.lower() or "Gem::" in line: continue
-            if line.startswith("[+]"):
+            if line.startswith("[+]") or line.startswith("[*]"):
+                
+                cve_id = extract_cve_from_text(line)
+                
                 vuln = {
                     "tool": "metasploit",
                     "title": "Metasploit Finding",
-                    "severity": "info", 
+                    "severity": "high" if cve_id else "info", 
+                    "cve": cve_id,
                     "description": line,
                     "raw_output": line
                 }
-                if "SSH server version" in line: vuln["title"] = "SSH Version Detected"
-                elif "Anonymous READ" in line: 
-                    vuln["title"] = "Anonymous FTP Access"
-                    vuln["severity"] = "medium"
-                elif "OS:" in line: vuln["title"] = "OS Detection"
-                elif "Apache" in line or "nginx" in line: vuln["title"] = "Web Server Version Detected"
+                
+                # Try to give better titles
+                if "SSH" in line: vuln["title"] = "SSH Issue Detected"
+                elif "FTP" in line: vuln["title"] = "FTP Issue Detected"
+                elif "exploitable" in line.lower(): vuln["severity"] = "critical"
+                
                 vulnerabilities.append(vuln)
     except Exception as e:
         logger.error(f"Error reading Metasploit file {file_path}: {e}")
@@ -211,9 +240,7 @@ def parse_openvas(file_path: str) -> List[Dict[str, Any]]:
             name = safe_text(result, "name", "Unknown Vulnerability")
             description = safe_text(result, "description", "No description provided.")
             
-            # FIX: Strip whitespace from severity to prevent format errors
             severity_score = safe_text(result, "severity", "0.0").strip()
-            
             try: score = float(severity_score)
             except ValueError: score = 0.0
 
@@ -223,15 +250,37 @@ def parse_openvas(file_path: str) -> List[Dict[str, Any]]:
             elif score > 0.0: severity = "low"
             else: severity = "info"
 
-            nvt_element = result.find("nvt")
-            nvt_oid = nvt_element.get("oid") if nvt_element is not None else ""
+            nvt = result.find("nvt")
+            nvt_oid = nvt.get("oid") if nvt is not None else ""
+
+            # CVE Extraction
+            cve_id = "N/A"
+            if nvt is not None:
+                # 1. Try explicit tags
+                raw_cve = safe_text(nvt, "cve", "NOCVE")
+                if "CVE-" in raw_cve:
+                    cve_id = raw_cve.split(",")[0].strip()
+                
+                # 2. Try Refs tag
+                if cve_id == "N/A":
+                    refs = nvt.find("refs")
+                    if refs is not None:
+                        for ref in refs.findall("ref"):
+                            if ref.get("type") == "cve":
+                                cve_id = ref.get("id")
+                                break
+            
+            # 3. Fallback: Search description
+            if cve_id == "N/A":
+                cve_id = extract_cve_from_text(description) or "N/A"
 
             vuln = {
                 "tool": "openvas",
                 "title": name,
                 "severity": severity,
                 "description": description,
-                "cvss_score": severity_score,
+                "cvss_score": score,
+                "cve": cve_id,
                 "host": safe_text(result, "host", "unknown"),
                 "port": safe_text(result, "port", "unknown"),
                 "nvt_oid": nvt_oid

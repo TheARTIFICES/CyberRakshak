@@ -21,6 +21,7 @@ class PDFReport(FPDF):
 def clean_text(text: str) -> str:
     """Sanitizes text for FPDF (Latin-1 encoding) and removes control chars."""
     if not text: return ""
+    text = str(text)
     text = "".join(ch for ch in text if ord(ch) >= 32 or ch in "\n\r\t")
     replacements = {
         '\u2013': '-', '\u2014': '-', '\u2018': "'", '\u2019': "'",
@@ -31,7 +32,7 @@ def clean_text(text: str) -> str:
     return text.encode('latin-1', 'ignore').decode('latin-1')
 
 def get_severity_color(pdf, severity):
-    severity = severity.lower()
+    severity = str(severity).lower()
     if severity in ['critical', 'high']:
         pdf.set_text_color(180, 0, 0) # Red
     elif severity == 'medium':
@@ -49,29 +50,43 @@ def draw_section_header(pdf, title):
     pdf.ln(5)
     pdf.set_text_color(0, 0, 0)
 
-def group_nikto_findings(vulns):
-    """Combines repetitive Nikto header missing issues."""
-    grouped = []
-    header_issues = []
+def resolve_cvss(v):
+    """
+    Intelligently resolves CVSS score.
+    Priority: 
+    1. Explicit NVD Score (from Enrichment)
+    2. Scanner Provided Score (from Parser)
+    3. Estimated Score based on Severity (Fallback)
+    """
+    scanner_score = v.get('cvss_score')
     
-    for v in vulns:
-        title = v.get('title', '').lower()
-        if 'header' in title and ('missing' in title or 'not set' in title or 'anti-clickjacking' in title):
-            header_issues.append(v)
-        else:
-            grouped.append(v)
-            
-    if header_issues:
-        grouped.append({
-            'tool': 'nikto',
-            'severity': 'low',
-            'title': f"Multiple Missing Security Headers ({len(header_issues)} headers)",
-            'description': "Several HTTP security headers are missing from the web server response. \n" + 
-                           "\n".join([f"- {clean_text(h.get('title'))}" for h in header_issues]),
-            'solution': "Configure the web server to send strict security headers (e.g., X-Frame-Options, X-Content-Type-Options, CSP).",
-            'cvss_score': 'N/A'
-        })
-    return grouped
+    # Safely access nested dictionary
+    enrichment = v.get('enrichment') or {}
+    nvd_data = enrichment.get('nvd_data') or {}
+    nvd_score = nvd_data.get('score')
+    
+    s1 = 0.0
+    s2 = 0.0
+    
+    # 1. Check Scanner/NVD
+    try: s1 = float(scanner_score) if scanner_score else 0.0
+    except: pass
+    try: s2 = float(nvd_score) if nvd_score else 0.0
+    except: pass
+    
+    final = max(s1, s2)
+    
+    if final > 0:
+        return str(final)
+
+    # 2. Fallback: Estimate based on Severity string
+    sev = str(v.get('severity', '')).lower()
+    if sev == 'critical': return "9.5 (Est)"
+    if sev == 'high': return "8.0 (Est)"
+    if sev == 'medium': return "5.5 (Est)"
+    if sev == 'low': return "3.0 (Est)"
+    
+    return "N/A"
 
 def generate_pdf_report(job_data: dict, filename: str):
     pdf = PDFReport()
@@ -86,11 +101,11 @@ def generate_pdf_report(job_data: dict, filename: str):
     vulns = results.get("vulnerabilities", [])
     techs = results.get("technologies", [])
     
-    # Calculate Stats
-    crit_count = len([v for v in vulns if v.get('severity') in ['critical']])
-    high_count = len([v for v in vulns if v.get('severity') in ['high']])
-    med_count = len([v for v in vulns if v.get('severity') in ['medium']])
-    low_count = len([v for v in vulns if v.get('severity') in ['low', 'info', 'unknown']])
+    # Sort vulns by severity for the stats
+    crit_count = len([v for v in vulns if v.get('severity', '').lower() == 'critical'])
+    high_count = len([v for v in vulns if v.get('severity', '').lower() == 'high'])
+    med_count = len([v for v in vulns if v.get('severity', '').lower() == 'medium'])
+    low_count = len([v for v in vulns if v.get('severity', '').lower() in ['low', 'info', 'unknown']])
     
     overall_risk = "LOW"
     if crit_count > 0: overall_risk = "CRITICAL"
@@ -112,12 +127,9 @@ def generate_pdf_report(job_data: dict, filename: str):
     draw_section_header(pdf, "Executive Summary")
     pdf.set_font("Arial", "", 11)
     
-    # Grid layout for stats
     pdf.cell(90, 8, f"Total Open Ports: {len(ports)}", 1, 0)
-    pdf.cell(90, 8, f"Total Services: {len(ports)}", 1, 1) # Usually mapping 1:1 for basic scans
-    pdf.cell(90, 8, f"Total Vulnerabilities: {len(vulns)}", 1, 0)
+    pdf.cell(90, 8, f"Total Findings: {len(vulns)}", 1, 1)
     
-    # Risk Rating with color
     pdf.cell(40, 8, "Overall Risk: ", 1, 0)
     pdf.set_font("Arial", "B", 11)
     get_severity_color(pdf, overall_risk)
@@ -127,7 +139,6 @@ def generate_pdf_report(job_data: dict, filename: str):
     
     pdf.ln(5)
     
-    # Vuln Counts
     pdf.cell(45, 8, f"Critical: {crit_count}", 1, 0, 'C')
     pdf.cell(45, 8, f"High: {high_count}", 1, 0, 'C')
     pdf.cell(45, 8, f"Medium: {med_count}", 1, 0, 'C')
@@ -135,12 +146,11 @@ def generate_pdf_report(job_data: dict, filename: str):
     pdf.ln(10)
 
     # 3. Asset Information
-    draw_section_header(pdf, "Asset & Environment Information")
+    draw_section_header(pdf, "Asset & Environment")
     pdf.set_font("Arial", "", 11)
     pdf.cell(50, 8, "IP Address / Host:", 0, 0)
     pdf.cell(0, 8, target, 0, 1)
     
-    # Try to find OS from Nmap ports (generic heuristic) or techs
     os_guess = "Unknown"
     for p in ports:
         if 'product' in p and 'os' in str(p.get('product', '')).lower():
@@ -155,11 +165,8 @@ def generate_pdf_report(job_data: dict, filename: str):
     pdf.multi_cell(0, 8, clean_text(tech_str))
     pdf.ln(5)
 
-
-    # ================= PAGE 2: PORTS & VULN GROUPS =================
+    # ================= PAGE 2: PORTS =================
     pdf.add_page()
-    
-    # 4. Open Ports Table
     draw_section_header(pdf, "Open Ports & Services")
     
     pdf.set_font("Arial", "B", 10)
@@ -177,98 +184,41 @@ def generate_pdf_report(job_data: dict, filename: str):
         pdf.cell(85, 7, clean_text(str(p.get('product', '') + ' ' + p.get('version', ''))[:45]), 1, 1, 'L')
     pdf.ln(10)
 
-    # ================= VULNERABILITY GROUPS =================
+    # ================= VULNERABILITIES =================
+    pdf.add_page()
+    draw_section_header(pdf, "Detailed Vulnerability Findings")
     
-    # Categorize Vulns
-    openvas_vulns = [v for v in vulns if v.get('tool') == 'openvas']
-    zap_vulns = [v for v in vulns if v.get('tool') == 'zap']
-    nikto_vulns = group_nikto_findings([v for v in vulns if v.get('tool') == 'nikto'])
+    # Sort vulns: Critical -> High -> Medium -> Low
+    severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3, 'info': 4, 'unknown': 5}
+    sorted_vulns = sorted(vulns, key=lambda x: severity_order.get(x.get('severity', 'unknown').lower(), 5))
+
+    if not sorted_vulns:
+        pdf.cell(0, 10, "No vulnerabilities detected.", 0, 1)
     
-    # Group remaining (Nuclei, Nmap, etc) as Infrastructure
-    infra_vulns = [v for v in vulns if v.get('tool') not in ['openvas', 'zap', 'nikto']]
-
-    # --- Group 1: OpenVAS ---
-    if openvas_vulns:
-        pdf.add_page()
-        draw_section_header(pdf, "Group 1: OpenVAS Findings")
-        
-        # Headers
-        pdf.set_font("Arial", "B", 9)
-        pdf.set_fill_color(230, 230, 250)
-        pdf.cell(25, 8, "Severity", 1, 0, 'C', True)
-        pdf.cell(90, 8, "Vulnerability Title", 1, 0, 'L', True)
-        pdf.cell(20, 8, "CVSS", 1, 0, 'C', True)
-        pdf.cell(25, 8, "Port", 1, 0, 'C', True)
-        pdf.cell(30, 8, "CPE", 1, 1, 'L', True)
-        
-        pdf.set_font("Arial", "", 9)
-        for v in openvas_vulns:
-            sev = clean_text(v.get('severity', 'info'))
-            get_severity_color(pdf, sev)
-            pdf.cell(25, 6, sev.upper(), 1, 0, 'C')
-            pdf.set_text_color(0, 0, 0)
-            
-            pdf.cell(90, 6, clean_text(v.get('title'))[:50], 1, 0, 'L')
-            
-            # Handle CVSS safely
-            raw_cvss = v.get('cvss_score') or v.get('enrichment', {}).get('nvd_data', {}).get('score')
-            cvss = clean_text(str(raw_cvss) if raw_cvss is not None else 'N/A')
-            pdf.cell(20, 6, cvss, 1, 0, 'C')
-            
-            pdf.cell(25, 6, clean_text(v.get('port')), 1, 0, 'C')
-            pdf.cell(30, 6, "N/A", 1, 1, 'L') # CPE often missing in basic parsing, keeping placeholder
-            
-            # Optional: Add description row if critical
-            if sev.lower() in ['critical', 'high']:
-                pdf.set_font("Arial", "I", 8)
-                pdf.cell(190, 5, "Desc: " + clean_text(v.get('description', ''))[:130] + "...", "LRB", 1, 'L')
-                pdf.set_font("Arial", "", 9)
-
-    # --- Group 2: Infrastructure / Network (Nuclei, Nmap) ---
-    if infra_vulns:
-        pdf.add_page()
-        draw_section_header(pdf, "Group 2: Infrastructure & Network Findings")
-        
-        for v in infra_vulns:
-            _print_standard_vuln_block(pdf, v)
-
-    # --- Group 3: Nikto Findings ---
-    if nikto_vulns:
-        pdf.add_page()
-        draw_section_header(pdf, "Group 3: Nikto Web Server Findings")
-        pdf.set_font("Arial", "I", 10)
-        pdf.cell(0, 8, "Issues related to Web Server misconfigurations (e.g., Headers, Outdated Software).", 0, 1)
-        pdf.ln(2)
-        
-        for v in nikto_vulns:
-            _print_standard_vuln_block(pdf, v)
-
-    # --- Group 4: OWASP ZAP Findings ---
-    if zap_vulns:
-        pdf.add_page()
-        draw_section_header(pdf, "Group 4: OWASP ZAP Web Application Findings")
-        
-        for v in zap_vulns:
-            _print_standard_vuln_block(pdf, v)
+    for v in sorted_vulns:
+        _print_standard_vuln_block(pdf, v)
 
     pdf.output(filename)
     return filename
 
 def _print_standard_vuln_block(pdf, v):
-    """Helper to print a detailed vulnerability block for Groups 2, 3, 4."""
-    title = clean_text(v.get('title', 'Unknown'))
+    """Helper to print a detailed vulnerability block."""
+    title = clean_text(v.get('title', 'Unknown Finding'))
     sev = clean_text(v.get('severity', 'info')).upper()
+    tool = clean_text(v.get('tool', 'Scanner')).upper()
     
-    # Title Row
+    # Header Row with Color
     pdf.set_font("Arial", "B", 11)
     get_severity_color(pdf, sev)
-    pdf.cell(190, 8, f"[{sev}] {title}", 0, 1, 'L')
+    pdf.cell(150, 8, f"[{sev}] {title}", 0, 0, 'L')
+    pdf.set_text_color(100, 100, 100)
+    pdf.set_font("Arial", "", 9)
+    pdf.cell(40, 8, f"Source: {tool}", 0, 1, 'R')
     pdf.set_text_color(0, 0, 0)
     
-    # Metadata
+    # Metadata Row (CVSS, Port)
     pdf.set_font("Arial", "B", 9)
-    raw_cvss = v.get('cvss_score') or v.get('enrichment', {}).get('nvd_data', {}).get('score')
-    cvss = clean_text(str(raw_cvss) if raw_cvss is not None else 'N/A')
+    cvss = resolve_cvss(v)
     
     pdf.cell(20, 6, "CVSS:", 0, 0)
     pdf.set_font("Arial", "", 9)
@@ -277,13 +227,67 @@ def _print_standard_vuln_block(pdf, v):
     pdf.set_font("Arial", "B", 9)
     pdf.cell(20, 6, "Port:", 0, 0)
     pdf.set_font("Arial", "", 9)
-    pdf.cell(20, 6, clean_text(str(v.get('port'))), 0, 1)
+    pdf.cell(20, 6, clean_text(str(v.get('port', 'N/A'))), 0, 0)
+
+    # --- CVE & EXPLOIT SECTION ---
+    # Get CVE (Prioritize Enrichment -> Scanner -> N/A)
+    enrichment = v.get('enrichment') or {}
+    cve = v.get('cve') or enrichment.get('cve_id') or "N/A"
     
+    # Print CVE Line
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(20, 6, "CVE:", 0, 0)
+    pdf.set_font("Arial", "", 9)
+    pdf.cell(40, 6, clean_text(cve), 0, 0)
+    
+    pdf.ln(6)
+
+    # === THREAT INTELLIGENCE (Exploits) ===
+    has_intel = False
+
+    # Check for Exploits IF we have a valid CVE
+    if cve and cve.startswith("CVE-"):
+        exploit_info = enrichment.get('exploit_info')
+        
+        if exploit_info and exploit_info.get('available'):
+            has_intel = True
+            pdf.set_font("Arial", "B", 9)
+            pdf.set_text_color(220, 20, 60) # Crimson Red
+            ids = ", ".join(exploit_info.get('ids', []))
+            pdf.cell(0, 6, f"!! PUBLIC EXPLOIT AVAILABLE (ExploitDB IDs: {ids})", 0, 1)
+        else:
+            # Explicitly state no exploit is available
+            has_intel = True
+            pdf.set_font("Arial", "I", 9)
+            pdf.set_text_color(80, 80, 80) # Dark Gray
+            pdf.cell(0, 6, "No exploit available in public data base try with CyRa", 0, 1)
+
+    # 2. AlienVault OTX Insights
+    otx_data = enrichment.get('otx_data')
+    if otx_data:
+        has_intel = True
+        pdf.set_font("Arial", "B", 9)
+        pdf.set_text_color(255, 140, 0) # Dark Orange
+        pulses = otx_data.get('pulse_count', 0)
+        tags_list = otx_data.get('tags', [])[:5]
+        tags_str = ", ".join(tags_list)
+        pdf.cell(0, 6, f"[Threat Intel] AlienVault OTX: Found in {pulses} Pulses (Tags: {tags_str})", 0, 1)
+
+    # Reset text color
+    pdf.set_text_color(0, 0, 0)
+    if has_intel: pdf.ln(2)
+
     # Description
     pdf.set_font("Arial", "B", 9)
     pdf.cell(0, 6, "Description:", 0, 1)
     pdf.set_font("Arial", "", 9)
-    desc = clean_text(v.get('description', 'No description provided.')).replace('<p>', '').replace('</p>', '')
+    
+    # Safe Description Access
+    nvd_data = enrichment.get('nvd_data') or {}
+    desc = v.get('description') or nvd_data.get('description') or 'No description provided.'
+    
+    # HTML Cleaning
+    desc = clean_text(desc).replace('<p>', '').replace('</p>', '').replace('<b>', '').replace('</b>', '')
     pdf.multi_cell(0, 5, desc)
     
     # Remediation
@@ -294,5 +298,7 @@ def _print_standard_vuln_block(pdf, v):
     sol = clean_text(v.get('solution') or v.get('remediation', 'Apply latest patches and configuration best practices.'))
     pdf.multi_cell(0, 5, sol)
     
+    # Separator
+    pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y()+5, 200, pdf.get_y()+5)
     pdf.ln(8)

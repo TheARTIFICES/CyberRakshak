@@ -2,6 +2,7 @@ import time
 import requests
 import logging
 from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 from sqlmodel import Session, select, delete
 from app.database import engine
 from app.models import VulnerabilityMetadata
@@ -15,8 +16,6 @@ NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 def remove_stale_data(days: int = 180):
     """
     Removes records that haven't been updated in 'days'.
-    NOTE: In production, you usually want to REFRESH these instead of deleting.
-    Deleting them means the next scan will force a slow API call.
     """
     cutoff_date = datetime.utcnow() - timedelta(days=days)
     logger.info(f"Cleaning up data older than {cutoff_date}...")
@@ -26,6 +25,54 @@ def remove_stale_data(days: int = 180):
         result = session.exec(statement)
         session.commit()
         logger.info(f"Deleted {result.rowcount} stale records.")
+
+def fetch_nvd_data(cve_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Queries NIST NVD API for a single CVE (Rate Limited).
+    Used by enrichment.py for on-demand lookups.
+    """
+    try:
+        # Respect rate limits (NIST is strict, 2s delay)
+        time.sleep(2) 
+        
+        url = f"{NVD_API_URL}?cveId={cve_id}"
+        logger.info(f"Fetching single NVD record: {url}")
+        
+        resp = requests.get(url, timeout=10)
+        
+        if resp.status_code != 200:
+            logger.error(f"NVD API failed for {cve_id}: Status {resp.status_code}")
+            return None
+            
+        data = resp.json()
+        vulnerabilities = data.get("vulnerabilities", [])
+        if not vulnerabilities: 
+            return None
+            
+        cve_item = vulnerabilities[0].get("cve", {})
+        metrics = cve_item.get("metrics", {})
+        
+        cvss_data = None
+        # Try V3.1, fallback to V3.0, then V2
+        if "cvssMetricV31" in metrics:
+            cvss_data = metrics["cvssMetricV31"][0].get("cvssData", {})
+        elif "cvssMetricV30" in metrics:
+            cvss_data = metrics["cvssMetricV30"][0].get("cvssData", {})
+        elif "cvssMetricV2" in metrics:
+             cvss_data = metrics["cvssMetricV2"][0].get("cvssData", {})
+
+        desc_list = cve_item.get("descriptions", [])
+        description = desc_list[0].get("value", "No description") if desc_list else "No description"
+
+        return {
+            "description": description,
+            "cvss_score": cvss_data.get("baseScore") if cvss_data else 0.0,
+            "severity": cvss_data.get("baseSeverity") if cvss_data else "UNKNOWN",
+            "vector_string": cvss_data.get("vectorString") if cvss_data else None
+        }
+    except Exception as e:
+        logger.error(f"NVD API exception for {cve_id}: {e}")
+        return None
 
 def sync_nvd(days_back: int = 90):
     """
@@ -74,7 +121,6 @@ def sync_nvd(days_back: int = 90):
                     # Extract Metrics
                     metrics = cve_item.get("metrics", {})
                     cvss_data = None
-                    # Try V3.1, fallback to V3.0, then V2
                     if "cvssMetricV31" in metrics:
                         cvss_data = metrics["cvssMetricV31"][0].get("cvssData", {})
                     elif "cvssMetricV30" in metrics:
@@ -115,9 +161,5 @@ def sync_nvd(days_back: int = 90):
     logger.info("NVD Sync Completed.")
 
 if __name__ == "__main__":
-    # 1. Clean old data (optional, e.g., older than 6 months)
     remove_stale_data(days=180)
-    
-    # 2. Sync new data (e.g., last 30 days)
-    # On first run, you might want to set days_back=365 to get a year of data
     sync_nvd(days_back=30)

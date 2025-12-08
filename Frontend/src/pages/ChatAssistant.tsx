@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { Bot, Send, Zap, Radar, Brain } from "lucide-react";
 // Import the service
 import chatAssistantService from "../services/chatAssistant";
+// Import the styled component
+import ChatBubbleAssistant from "../components/chat/ChatBubbleAssistant";
 
 // Define message type for clarity
 interface Message {
@@ -71,7 +73,6 @@ const ChatAssistant = () => {
     };
 
     // 3. Create AI Placeholder Message
-    // This acts as the "Typing..." indicator until text arrives
     const aiPlaceholder: Message = {
       id: aiMsgId,
       sender: "ai",
@@ -160,28 +161,17 @@ const ChatAssistant = () => {
 
         {/* Chat Messages */}
         {messages.length > 1 && (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
                 {message.sender === "user" ? (
                   // User Message Bubble
-                  <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-6 py-3 max-w-[80%]">
+                  <div className="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-6 py-3 max-w-[80%] shadow-md">
                     <p>{message.content}</p>
                   </div>
                 ) : (
-                  // AI Message Bubble
-                  <div className="bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-700 rounded-2xl rounded-tl-sm px-6 py-6 shadow-sm w-full max-w-[80%]">
-                    <div className="flex items-start mb-3">
-                      <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center mr-3 flex-shrink-0">
-                        <Bot className="w-4 h-4 text-cyan-500" />
-                      </div>
-                      <span className="font-semibold text-slate-800 dark:text-slate-100">CyRa AI</span>
-                    </div>
-                    {/* Render newlines properly */}
-                    <div className="text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">
-                      {message.content}
-                    </div>
-                  </div>
+                  // AI Message Bubble (Now using the updated Component)
+                  <ChatBubbleAssistant text={message.content} />
                 )}
               </div>
             ))}
