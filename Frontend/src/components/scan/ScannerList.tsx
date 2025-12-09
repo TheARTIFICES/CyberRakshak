@@ -43,9 +43,9 @@ const scanners: ScannerItem[] = [
     description: "Tech stack detection & fingerprinting.",
   },
   {
-    id: "nessus",
-    name: "Nessus",
-    description: "The industry standard for vulnerability assessment and compliance auditing.",
+    id: "whois",
+    name: "Whois",
+    description: "Domain registration, ownership details, and expiry data.",
   },
 ];
 

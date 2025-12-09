@@ -96,5 +96,14 @@ services:
     entrypoint: ["echo", "Metasploit image pulled."]
     restart: "no"
 
+  whois:
+    build:
+      context: .
+      dockerfile: Dockerfile.whois
+    image: local/whois
+    container_name: sih-whois-builder
+    entrypoint: ["echo", "Whois image built."]
+    restart: "no"
+
 volumes:
   postgres_data:

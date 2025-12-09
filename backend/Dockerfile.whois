@@ -1,0 +1,10 @@
+FROM alpine:latest
+
+# Install whois
+RUN apk update && \
+    apk add whois && \
+    rm -rf /var/cache/apk/*
+
+ENTRYPOINT ["whois"]
+# Default command
+CMD ["--help"]

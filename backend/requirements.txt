@@ -21,6 +21,7 @@ numpy
 redis
 fastapi-cache2[redis]
 playwright
+tldextract
 
 # --- SECURITY ---
 passlib

@@ -29,7 +29,7 @@ const ScanConsole = () => {
     metasploit: false,
     openvas: false,
     wappalyzer: false,
-    nessus: false,
+    whois: true,
   });
   
   const [drawerScanner, setDrawerScanner] = useState<string | null>(null);
@@ -73,12 +73,12 @@ const ScanConsole = () => {
   useEffect(() => {
     const resetScanners = {
       nmap: false, nuclei: false, zap: false, nikto: false,
-      metasploit: false, openvas: false, wappalyzer: false, nessus: false
+      metasploit: false, openvas: false, wappalyzer: false, whois: false
     };
 
     if (scanProfile === "quick") {
       // Quick Scan: Nmap, ZAP, Metasploit, Wappalyzer
-      setSelectedScanners({ ...resetScanners, nmap: true, zap: true, metasploit: true, wappalyzer: true });
+      setSelectedScanners({ ...resetScanners, nmap: true, zap: true, metasploit: true, wappalyzer: true, whois: true });
       setScannerConfigs((prev) => ({
         ...prev,
         nmap: { speed: "T4", raw_args: ["-F"] }, // Fast scan

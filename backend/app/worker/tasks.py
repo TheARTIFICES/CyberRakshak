@@ -7,12 +7,13 @@ import concurrent.futures
 import urllib3
 import asyncio
 import re
+import tldextract
 from sqlmodel import Session
 from app.worker.celery_app import celery_app
 from app.database import engine
 from app.models import Job, JobStatus, Notification
 from typing import List, Dict, Any, Optional
-from app.parsers import parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, parse_metasploit, parse_openvas
+from app.parsers import parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, parse_metasploit, parse_openvas, parse_whois
 from app.enrichment import get_cisa_kev_data, enrich_vulnerability
 from app.utils.nvd_sync import sync_nvd
 from app.utils.exploitdb import sync_exploitdb
@@ -41,7 +42,7 @@ def update_tool_status(job_id: uuid.UUID, tool_name: str, status: str):
             session.add(job)
             session.commit()
 
-# ... [KEEP Nmap, Nuclei, Nikto, Zap, Wappalyzer, Metasploit functions AS IS] ...
+# --- SCANNER RUNNERS ---
 
 def run_nmap(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting Nmap for {target}...")
@@ -190,6 +191,43 @@ def run_metasploit(target: str, host_dir: str, internal_dir: str, config: Dict[s
     print("Metasploit completed.")
     return output_file
 
+def run_whois(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Whois for {target}...")
+    output_file = os.path.join(internal_dir, "whois.txt")
+    
+    # --- BETTER DOMAIN PARSING ---
+    try:
+        # tldextract accurately separates subdomain, domain, and suffix
+        extracted = tldextract.extract(target)
+        
+        if extracted.registered_domain:
+            # e.g., 'www.google.co.uk' -> 'google.co.uk'
+            # e.g., 'google-gruyere.appspot.com' -> 'appspot.com'
+            clean_target = extracted.registered_domain
+        else:
+            # Fallback for IPs (e.g., '1.1.1.1') or local domains ('localhost')
+            # where registered_domain is empty.
+            clean_target = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+
+    except Exception as e:
+        print(f"TLD Extraction failed: {e}. Falling back to simple split.")
+        clean_target = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+    
+    print(f"Whois target resolved to: {clean_target}")
+    # -----------------------------
+
+    cmd = ["docker", "run", "--rm", "local/whois", clean_target]
+    
+    try:
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        with open(output_file, 'w') as f:
+            f.write(result.stdout)
+        print("Whois completed.")
+        return output_file
+    except Exception as e:
+        print(f"Whois Failed: {e}")
+        return None
+
 def run_openvas(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting OpenVAS for {target}...")
     
@@ -260,7 +298,6 @@ try:
         report_id = reports[0]
         response = gmp.get_report(report_id, report_format_id="a994b278-1f62-11e1-96ac-406186ea4fc5")
         
-        # --- KEY CHANGE: WRITE TO FILE DIRECTLY ---
         with open('/scan/{container_output_filename}', 'w') as f:
             f.write(etree.tostring(response, encoding='unicode'))
 
@@ -283,15 +320,12 @@ except Exception as e:
     
     try:
         result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-        
-        # Check if the file was created in the shared volume
         if os.path.exists(celery_output_path):
             os.rename(celery_output_path, final_output_file)
-            print("OpenVAS scan complete. Report retrieved successfully.")
+            print("OpenVAS scan complete.")
             return final_output_file
         else:
-            print("OpenVAS Failed: No output file found.")
-            print(f"STDERR: {result.stderr}")
+            print(f"OpenVAS Failed: {result.stderr}")
             return None
 
     except Exception as e: 
@@ -343,7 +377,8 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             "zap": run_zap,
             "wappalyzer": run_wappalyzer,
             "metasploit": run_metasploit,
-            "openvas": run_openvas
+            "openvas": run_openvas,
+            "whois": run_whois
         }
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -368,6 +403,16 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             res = parse_nmap(output_paths["nmap"])
             normalized_data["host_info"] = res["host_info"]
             normalized_data["ports"].extend(res["open_ports"])
+        
+        if "whois" in output_paths:
+            print(f"Parsing Whois data from {output_paths['whois']}")
+            whois_data = parse_whois(output_paths["whois"])
+            # Ensure host_info exists
+            if "host_info" not in normalized_data: 
+                normalized_data["host_info"] = {}
+            # Merge Whois data
+            normalized_data["host_info"].update(whois_data)
+
         if "nuclei" in output_paths: vulnerabilities.extend(parse_nuclei(output_paths["nuclei"]))
         if "nikto" in output_paths: vulnerabilities.extend(parse_nikto(output_paths["nikto"]))
         if "zap" in output_paths: vulnerabilities.extend(parse_zap(output_paths["zap"]))
@@ -399,8 +444,6 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             session.commit()
 
             if job.notify_email and job.email_recipients:
-                print(f"Sending email to: {job.email_recipients}")
-                
                 pdf_path = os.path.join(internal_dir, f"report_{job_id}.pdf")
                 generate_pdf_report({
                     "job_id": str(job.id), "target": job.target, "created_at": job.created_at, "results": normalized_data
@@ -410,7 +453,6 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
                 try:
                     generate_graph_image(str(job.id), graph_path)
                 except Exception as e: 
-                    print(f"Graph Gen Error: {e}")
                     graph_path = None
 
                 attachments = [pdf_path]

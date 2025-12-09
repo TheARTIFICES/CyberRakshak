@@ -153,6 +153,15 @@ services:
       - frontend
       - backend
 
+  whois:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.whois
+    image: local/whois
+    container_name: sih-whois-builder
+    entrypoint: ["echo", "Whois image built."]
+    restart: "no"
+
 volumes:
   postgres_data:
   redis_data:

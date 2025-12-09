@@ -291,3 +291,42 @@ def parse_openvas(file_path: str) -> List[Dict[str, Any]]:
         logger.error(f"Error reading OpenVAS file {file_path}: {e}")
 
     return vulnerabilities
+
+def parse_whois(file_path: str) -> Dict[str, Any]:
+    """Parses Whois text output into a dictionary."""
+    results = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+            
+        results["raw_output"] = content
+        # Default values (using keys expected by reporting.py)
+        results["registrar"] = None
+        results["creation_date"] = None
+        results["expiry_date"] = None
+        results["name_servers"] = []
+
+        for line in content.splitlines():
+            if ":" in line:
+                parts = line.split(":", 1)
+                if len(parts) == 2:
+                    key = parts[0].strip().lower()
+                    val = parts[1].strip()
+                    
+                    # Common Whois Keys mappings
+                    if "registrar" in key and "url" not in key and "iana" not in key: 
+                        results["registrar"] = val
+                    elif "creation date" in key or "created" in key: 
+                        results["creation_date"] = val
+                    elif "expiry date" in key or "expiration date" in key or "expires" in key: 
+                        results["expiry_date"] = val
+                    elif "name server" in key or "nserver" in key: 
+                        results["name_servers"].append(val)
+                
+        # Remove duplicates from name servers
+        results["name_servers"] = list(set(results["name_servers"]))
+
+    except Exception as e:
+        logger.error(f"Error reading Whois file {file_path}: {e}")
+        
+    return results

@@ -57,6 +57,10 @@ class OpenVASConfig(BaseModel):
 class WappalyzerConfig(BaseModel):
     enabled: bool = True
 
+class WhoisConfig(BaseModel):
+    enabled: bool = True
+    raw_args: Optional[List[str]] = None
+
 class ScannerConfig(BaseModel):
     enabled: bool = True
     params: Optional[Dict[str, Any]] = {}
@@ -68,6 +72,7 @@ class ScannerConfigs(BaseModel):
     nikto: Optional[NiktoConfig] = NiktoConfig()
     metasploit: Optional[MetasploitConfig] = MetasploitConfig()
     openvas: Optional[OpenVASConfig] = OpenVASConfig()
+    whois: Optional[WhoisConfig] = WhoisConfig()
     wappalyzer: Optional[WappalyzerConfig] = WappalyzerConfig()
 
 class ScanStartRequest(BaseModel):
@@ -198,7 +203,7 @@ def start_scan(
     
     selected_scanners = []
     if not request.scanners:
-        selected_scanners = ["nmap", "nuclei", "nikto", "zap", "wappalyzer", "metasploit", "openvas"]
+        selected_scanners = ["nmap", "nuclei", "nikto", "zap", "wappalyzer", "metasploit", "openvas", "whois"]
     elif isinstance(request.scanners, list):
         selected_scanners = request.scanners
     elif isinstance(request.scanners, dict):
