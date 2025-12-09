@@ -21,9 +21,6 @@ import asyncio
 from datetime import datetime
 from app.utils.exploitdb import sync_exploitdb
 from app.utils.cisa_sync import sync_cisa_kev
-
-
-# --- FIX: Updated Import ---
 from app.utils.nvd_sync import sync_nvd 
 
 # === Configuration Models ===
@@ -294,7 +291,12 @@ async def send_chat_message(
     request: ChatMessageRequest,
     user: User = Depends(get_current_user)
 ):
-    response = await chat_assistant_service.get_response_async(request.message, request.history)
+    # FIX: Pass context_job_ids to the service
+    response = await chat_assistant_service.get_response_async(
+        request.message, 
+        request.history, 
+        request.context_job_ids
+    )
     return ChatMessageResponse(response=response)
 
 @router.post("/chat/stream")
@@ -303,7 +305,12 @@ async def stream_chat_response(
     user: User = Depends(get_current_user)
 ):
     async def event_generator():
-        async for chunk in chat_assistant_service.stream_response(request.message, request.history):
+        # FIX: Pass context_job_ids to the service
+        async for chunk in chat_assistant_service.stream_response(
+            request.message, 
+            request.history, 
+            request.context_job_ids
+        ):
             yield chunk
             await asyncio.sleep(0.01)
 

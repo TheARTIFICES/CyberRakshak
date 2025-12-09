@@ -105,7 +105,7 @@ interface VulnerabilityResponse {
 }
 
 interface JobHistoryResponse {
-  job_id: string;
+  id: string;
   target: string;
   status: string;
   created_at: string;

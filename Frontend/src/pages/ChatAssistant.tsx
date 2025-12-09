@@ -92,7 +92,7 @@ const ChatAssistant = () => {
     }));
 
     try {
-      // Pass selectedScanIds to the service
+      console.log("Sending Context IDs:", selectedScanIds);
       await chatAssistantService.sendStreamingMessage(text, history, selectedScanIds, (fullText) => {
         setMessages(prev => 
           prev.map(msg => 

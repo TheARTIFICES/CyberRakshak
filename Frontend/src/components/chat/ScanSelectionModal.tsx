@@ -22,7 +22,7 @@ const ScanSelectionModal = ({ open, onClose, selectedIds, onSelectionChange }: P
   const loadScans = async () => {
     setLoading(true);
     try {
-      const data = await getJobHistory(0, 50); // Fetch last 50 scans
+      const data = await getJobHistory(0, 50);
       setScans(data);
     } catch (e) {
       console.error("Failed to load scans", e);
@@ -32,6 +32,7 @@ const ScanSelectionModal = ({ open, onClose, selectedIds, onSelectionChange }: P
   };
 
   const toggleScan = (id: string) => {
+    if (!id) return; // Safety check
     if (selectedIds.includes(id)) {
       onSelectionChange(selectedIds.filter(sid => sid !== id));
     } else {
@@ -64,11 +65,15 @@ const ScanSelectionModal = ({ open, onClose, selectedIds, onSelectionChange }: P
             <div className="p-8 text-center text-slate-500 text-sm">No scan history found.</div>
           ) : (
             scans.map((scan) => {
-              const isSelected = selectedIds.includes(scan.job_id);
+              // --- FIX: Handle both 'id' and 'job_id' for safety ---
+              const scanId = scan.id || scan.job_id;
+              if (!scanId) return null; // Skip invalid rows
+
+              const isSelected = selectedIds.includes(scanId);
               return (
                 <div 
-                  key={scan.job_id}
-                  onClick={() => toggleScan(scan.job_id)}
+                  key={scanId}
+                  onClick={() => toggleScan(scanId)}
                   className={`
                     flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all
                     ${isSelected 

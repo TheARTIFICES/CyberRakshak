@@ -1,16 +1,16 @@
 import logging
 import asyncio
+import uuid  # <--- ADDED IMPORT
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from app.utils.ai_client import generate_ai_response
 from app.models import Job
 from sqlmodel import Session, select
 from app.database import engine
-from starlette.concurrency import run_in_threadpool # <--- IMPORT THIS
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 
 class ChatAssistantService:
-    # ... (init and _format_single_report methods remain the same) ...
     def __init__(self):
         # Strict Prompt (Used when scans ARE selected)
         self.scan_context_prompt = """
@@ -71,12 +71,25 @@ class ChatAssistantService:
             if not job_ids:
                 return "" 
 
+            # --- FIX: Convert String IDs to UUIDs ---
+            valid_uuids = []
+            for jid in job_ids:
+                try:
+                    valid_uuids.append(uuid.UUID(jid))
+                except ValueError:
+                    logger.warning(f"Ignored invalid UUID in context: {jid}")
+
+            if not valid_uuids:
+                 return "Error: No valid scan IDs provided."
+            # ----------------------------------------
+
             with Session(engine) as session:
-                statement = select(Job).where(Job.id.in_(job_ids))
+                # Use the list of UUID objects for the IN clause
+                statement = select(Job).where(Job.id.in_(valid_uuids))
                 jobs = session.exec(statement).all()
                 
                 if not jobs:
-                    return "User selected scans, but no matching data was found."
+                    return "User selected scans, but no matching data was found in database."
                 
                 context_parts = [self._format_single_report(job) for job in jobs]
                 return "\n\n".join(context_parts)
@@ -96,7 +109,7 @@ class ChatAssistantService:
         return "\n".join(formatted)
 
     async def get_response_async(self, user_message: str, history: List[Dict[str, str]] = [], context_job_ids: List[str] = []) -> str:
-        # --- FIX: Run DB Fetch in Threadpool to avoid blocking Heartbeat Loop ---
+        # Run DB Fetch in Threadpool
         scan_context = await run_in_threadpool(self._get_scan_context, context_job_ids)
         history_text = self._format_history(history)
 
