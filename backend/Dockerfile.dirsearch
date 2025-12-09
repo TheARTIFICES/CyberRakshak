@@ -1,0 +1,13 @@
+FROM python:3-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dirsearch via pip
+RUN pip install --no-cache-dir --upgrade pip setuptools
+RUN pip install --no-cache-dir dirsearch
+
+# Set the entrypoint
+ENTRYPOINT ["dirsearch"]

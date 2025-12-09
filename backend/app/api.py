@@ -58,6 +58,28 @@ class WhoisConfig(BaseModel):
     enabled: bool = True
     raw_args: Optional[List[str]] = None
 
+class WhatWebConfig(BaseModel):
+    aggression: int = 1
+    raw_args: Optional[List[str]] = None
+
+class DirsearchConfig(BaseModel):
+    extensions: str = "php,html,js,txt"
+    threads: int = 50
+    raw_args: Optional[List[str]] = None
+
+class WfuzzConfig(BaseModel):
+    wordlist: str = "common.txt"
+    hide_codes: str = "404"
+    raw_args: Optional[List[str]] = None
+
+class DalfoxConfig(BaseModel):
+    blind_url: Optional[str] = None
+    raw_args: Optional[List[str]] = None
+
+class GrypeConfig(BaseModel):
+    scope: str = "Squashed"
+    raw_args: Optional[List[str]] = None
+
 class ScannerConfig(BaseModel):
     enabled: bool = True
     params: Optional[Dict[str, Any]] = {}
@@ -71,6 +93,11 @@ class ScannerConfigs(BaseModel):
     openvas: Optional[OpenVASConfig] = OpenVASConfig()
     whois: Optional[WhoisConfig] = WhoisConfig()
     wappalyzer: Optional[WappalyzerConfig] = WappalyzerConfig()
+    whatweb: Optional[WhatWebConfig] = WhatWebConfig()
+    dirsearch: Optional[DirsearchConfig] = DirsearchConfig()
+    wfuzz: Optional[WfuzzConfig] = WfuzzConfig()
+    dalfox: Optional[DalfoxConfig] = DalfoxConfig()
+    grype: Optional[GrypeConfig] = GrypeConfig()
 
 class ScanStartRequest(BaseModel):
     target: str
@@ -200,7 +227,7 @@ def start_scan(
     
     selected_scanners = []
     if not request.scanners:
-        selected_scanners = ["nmap", "nuclei", "nikto", "zap", "wappalyzer", "metasploit", "openvas", "whois"]
+        selected_scanners = ["nmap", "nuclei", "nikto", "zap", "wappalyzer", "metasploit", "openvas", "whois", "whatweb", "dirsearch", "wfuzz", "dalfox", "grype"]
     elif isinstance(request.scanners, list):
         selected_scanners = request.scanners
     elif isinstance(request.scanners, dict):
@@ -447,7 +474,6 @@ def get_assets(
 
     return filtered_assets[skip : skip + limit]
 
-
 @router.get("/vulnerabilities", response_model=List[VulnerabilityResponse])
 @cache(expire=60)
 def get_vulnerabilities(
@@ -471,7 +497,10 @@ def get_vulnerabilities(
         
         for v in vulns:
             # --- Extract Data ---
-            cve = v.get("cve") or v.get("enrichment", {}).get("cve_id") or "N/A"
+            # FIX: Safely access enrichment data
+            enrichment = v.get("enrichment") or {}
+            
+            cve = v.get("cve") or enrichment.get("cve_id") or "N/A"
             title = v.get("title", "Unknown")
             tool_name = v.get("tool", "Unknown")
             sev = v.get("severity", "info").title()
@@ -489,11 +518,14 @@ def get_vulnerabilities(
                     continue
             
             # --- Map Data ---
-            cvss_raw = v.get("cvss_score") or v.get("enrichment", {}).get("nvd_data", {}).get("score")
+            # FIX: Safely access nvd_data
+            nvd_data = enrichment.get("nvd_data") or {}
+            
+            cvss_raw = v.get("cvss_score") or nvd_data.get("score")
             try: cvss = float(cvss_raw) if cvss_raw else 0.0
             except (ValueError, TypeError): cvss = 0.0
 
-            description = v.get("description") or v.get("enrichment", {}).get("nvd_data", {}).get("description") or "No description."
+            description = v.get("description") or nvd_data.get("description") or "No description."
 
             all_vulns.append(VulnerabilityResponse(
                 id=uuid.uuid4(), cve=cve, title=title,

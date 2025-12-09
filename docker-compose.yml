@@ -162,6 +162,51 @@ services:
     entrypoint: ["echo", "Whois image built."]
     restart: "no"
 
+  whatweb:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.whatweb
+    image: local/whatweb
+    container_name: sih-whatweb-builder
+    entrypoint: ["echo", "WhatWeb image built."]
+    restart: "no"
+
+  dirsearch:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dirsearch
+    image: local/dirsearch
+    container_name: sih-dirsearch-builder
+    entrypoint: ["echo", "Dirsearch image built."]
+    restart: "no"
+
+  wfuzz:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.wfuzz
+    image: local/wfuzz
+    container_name: sih-wfuzz-builder
+    entrypoint: ["echo", "Wfuzz image built."]
+    restart: "no"
+
+  dalfox:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dalfox
+    image: local/dalfox
+    container_name: sih-dalfox-builder
+    entrypoint: ["/app/dalfox", "version"]
+    restart: "no"
+
+  grype:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.grype
+    image: local/grype
+    container_name: sih-grype-builder
+    entrypoint: ["/grype", "version"]
+    restart: "no"
+
 volumes:
   postgres_data:
   redis_data:

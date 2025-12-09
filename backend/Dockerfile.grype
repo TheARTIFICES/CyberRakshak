@@ -1,0 +1,18 @@
+# Use a lightweight base image
+FROM alpine:latest
+
+# 1. Install dependencies required for HTTPS downloads
+RUN apk update && apk add --no-cache ca-certificates wget tar
+
+# 2. Set the Grype version and architecture
+ARG GRYPE_VERSION=0.79.0
+ARG ARCH=amd64
+
+# 3. Download and extract Grype
+# We use 'set -o pipefail' to ensure the build fails if the download fails
+RUN set -o pipefail && \
+    wget -qO- "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_${ARCH}.tar.gz" \
+    | tar -xz -C /usr/local/bin grype
+
+# 4. Verify installation
+RUN grype --version

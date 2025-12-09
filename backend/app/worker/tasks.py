@@ -14,6 +14,7 @@ from app.database import engine
 from app.models import Job, JobStatus, Notification
 from typing import List, Dict, Any, Optional
 from app.parsers import parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, parse_metasploit, parse_openvas, parse_whois
+from app.parsers import parse_whatweb, parse_dirsearch, parse_wfuzz,parse_dalfox, parse_grype
 from app.enrichment import get_cisa_kev_data, enrich_vulnerability
 from app.utils.nvd_sync import sync_nvd
 from app.utils.exploitdb import sync_exploitdb
@@ -152,8 +153,17 @@ def run_zap(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any
         "-J", "zap.json"
     ]
 
-    subprocess.run(cmd, check=False, capture_output=True, text=True)
-    print("ZAP completed.")
+    # CAPTURE the result
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    
+    # CHECK for failure
+    if result.returncode != 0:
+        print(f"ZAP FAILED. Return code: {result.returncode}")
+        print(f"STDERR: {result.stderr}")
+        print(f"STDOUT: {result.stdout}")
+    else:
+        print("ZAP completed successfully.")
+        
     return output_file
 
 def run_wappalyzer(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
@@ -226,6 +236,202 @@ def run_whois(target: str, host_dir: str, internal_dir: str, config: Dict[str, A
         return output_file
     except Exception as e:
         print(f"Whois Failed: {e}")
+        return None
+
+def run_whatweb(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting WhatWeb for {target}...")
+    output_file = os.path.join(internal_dir, "whatweb.json")
+    
+    aggression = config.get("aggression", 1)
+    raw_args = config.get("raw_args")
+
+    # WhatWeb writes to file via --log-json
+    # We map the host volume to /output inside container
+    
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/whatweb",
+        f"--aggression={aggression}",
+        f"--log-json=/output/whatweb.json",
+        target
+    ]
+    
+    ifRP = config.get("raw_args")
+    if raw_args: cmd.extend(raw_args)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        # Check if file was created
+        if os.path.exists(output_file):
+            print("WhatWeb completed.")
+            return output_file
+        else:
+            print("WhatWeb did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"WhatWeb Failed: {e}")
+        return None
+
+def run_dirsearch(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Dirsearch for {target}...")
+    output_file = os.path.join(internal_dir, "dirsearch.json")
+    
+    # Ensure target has protocol
+    target_url = target if target.startswith("http") else f"http://{target}"
+    
+    extensions = config.get("extensions", "php,html,js,txt")
+    threads = str(config.get("threads", 50))
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/dirsearch",
+        "-u", target_url,
+        "-e", extensions,
+        "--format=json",
+        "-o", "/output/dirsearch.json",
+        "-t", threads,
+        "--quiet"
+    ]
+    
+    if raw_args: cmd.extend(raw_args)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("Dirsearch completed.")
+            return output_file
+        else:
+            print("Dirsearch did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"Dirsearch Failed: {e}")
+        return None
+
+def run_wfuzz(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Wfuzz for {target}...")
+    output_file = os.path.join(internal_dir, "wfuzz.json")
+    
+    # Ensure target has protocol
+    target_url = target
+    if not target.startswith("http"):
+        target_url = f"http://{target}/FUZZ"
+    elif "/FUZZ" not in target_url:
+        target_url = f"{target_url.rstrip('/')}/FUZZ"
+    
+    # Config
+    wordlist = config.get("wordlist", "common.txt")
+    hide_codes = str(config.get("hide_codes", "404"))
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/wfuzz",
+        "-w", f"/wordlists/{wordlist}",
+        "-f", "/output/wfuzz.json,json", # Output format: file,json
+        "--hc", hide_codes,
+        target_url
+    ]
+    
+    if raw_args: cmd.extend(raw_args)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("Wfuzz completed.")
+            return output_file
+        else:
+            print("Wfuzz did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"Wfuzz Failed: {e}")
+        return None
+
+def run_dalfox(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Dalfox for {target}...")
+    output_file = os.path.join(internal_dir, "dalfox.json")
+    
+    # Ensure URL
+    target_url = target if target.startswith("http") else f"http://{target}"
+    
+    blind_url = config.get("blind_url")
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/dalfox",
+        "url", target_url,
+        "--format", "json",
+        "-o", "/output/dalfox.json"
+    ]
+    
+    if blind_url:
+        cmd.extend(["-b", blind_url])
+        
+    if raw_args: 
+        cmd.extend(raw_args)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("Dalfox completed.")
+            return output_file
+        else:
+            print("Dalfox did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"Dalfox Failed: {e}")
+        return None
+
+def run_grype(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Grype for {target}...")
+    output_file = os.path.join(internal_dir, "grype.json")
+    
+    scope = config.get("scope", "Squashed")
+    raw_args = config.get("raw_args")
+
+    # Grype command to scan a target (Image name)
+    # We map the docker socket so Grype can see the images on the host
+    cmd = [
+        "docker", "run", "--rm",
+        "--volume", "/var/run/docker.sock:/var/run/docker.sock",
+        "local/grype",
+        target,
+        "-o", "json",
+        "--scope", scope
+    ]
+    
+    if raw_args: 
+        cmd.extend(raw_args)
+
+    try:
+        # Grype writes JSON to stdout
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        
+        # Write stdout to file
+        if result.stdout:
+            with open(output_file, 'w') as f:
+                f.write(result.stdout)
+            
+            # Basic validation
+            try:
+                with open(output_file, 'r') as f:
+                    json.load(f)
+                print("Grype completed.")
+                return output_file
+            except:
+                print("Grype output was not valid JSON.")
+                return None
+        else:
+            print(f"Grype Failed (No Output): {result.stderr}")
+            return None
+
+    except Exception as e:
+        print(f"Grype Execution Error: {e}")
         return None
 
 def run_openvas(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
@@ -378,7 +584,12 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             "wappalyzer": run_wappalyzer,
             "metasploit": run_metasploit,
             "openvas": run_openvas,
-            "whois": run_whois
+            "whois": run_whois,
+            "whatweb": run_whatweb,
+            "dirsearch": run_dirsearch,
+            "wfuzz": run_wfuzz,
+            "dalfox": run_dalfox,
+            "grype": run_grype,
         }
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -412,6 +623,29 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
                 normalized_data["host_info"] = {}
             # Merge Whois data
             normalized_data["host_info"].update(whois_data)
+
+        if "whatweb" in output_paths:
+            ww_tech = parse_whatweb(output_paths["whatweb"])
+            # Merge with existing technologies list if wappalyzer also ran
+            if "technologies" not in normalized_data:
+                normalized_data["technologies"] = []
+            normalized_data["technologies"].extend(ww_tech)
+
+        if "dirsearch" in output_paths:
+            ds_vulns = parse_dirsearch(output_paths["dirsearch"])
+            vulnerabilities.extend(ds_vulns)
+
+        if "wfuzz" in output_paths:
+            wfuzz_vulns = parse_wfuzz(output_paths["wfuzz"])
+            vulnerabilities.extend(wfuzz_vulns)
+
+        if "dalfox" in output_paths:
+            df_vulns = parse_dalfox(output_paths["dalfox"])
+            vulnerabilities.extend(df_vulns)
+
+        if "grype" in output_paths:
+            grype_vulns = parse_grype(output_paths["grype"])
+            vulnerabilities.extend(grype_vulns)
 
         if "nuclei" in output_paths: vulnerabilities.extend(parse_nuclei(output_paths["nuclei"]))
         if "nikto" in output_paths: vulnerabilities.extend(parse_nikto(output_paths["nikto"]))

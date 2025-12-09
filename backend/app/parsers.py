@@ -330,3 +330,236 @@ def parse_whois(file_path: str) -> Dict[str, Any]:
         logger.error(f"Error reading Whois file {file_path}: {e}")
         
     return results
+
+def parse_whatweb(file_path: str) -> List[Dict[str, Any]]:
+    """Parses WhatWeb JSON output."""
+    technologies = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+            # WhatWeb returns a list of targets, usually we scan one
+            for result in data:
+                plugins = result.get('plugins', {})
+                for name, details in plugins.items():
+                    
+                    # Extract version
+                    version_list = details.get('version', [])
+                    version_str = ", ".join(version_list) if version_list else ""
+                    
+                    # Extract string matches (sometimes useful info)
+                    string_list = details.get('string', [])
+                    extra_info = ", ".join(string_list) if string_list else ""
+
+                    technologies.append({
+                        "name": name,
+                        "version": version_str,
+                        "extra": extra_info,
+                        "source": "WhatWeb"
+                    })
+    except Exception as e:
+        logger.error(f"Error reading WhatWeb file {file_path}: {e}")
+    
+    return technologies
+
+def parse_dirsearch(file_path: str) -> List[Dict[str, Any]]:
+    """Parses Dirsearch JSON output."""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+            if not isinstance(data, dict):
+                return findings
+
+            for key, results in data.items():
+                # FIX: Skip metadata keys (like "info") that are not lists
+                if not isinstance(results, list):
+                    continue
+
+                # The key is usually the Target URL in standard dirsearch json format
+                target_url = key
+
+                for item in results:
+                    # FIX: Ensure the item is a dictionary
+                    if not isinstance(item, dict):
+                        continue
+
+                    status = item.get("status")
+                    path = item.get("path")
+                    content_length = item.get("content-length")
+                    redirect = item.get("redirect")
+                    
+                    title = f"Hidden Directory Found: {path}"
+                    description = f"Found hidden path: {path} (Status: {status}, Size: {content_length}b)"
+                    if redirect:
+                        description += f" -> Redirects to: {redirect}"
+
+                    severity = "info"
+                    # Simple heuristic for severity
+                    if status == 200:
+                        path_lower = str(path).lower()
+                        if any(x in path_lower for x in ["admin", "config", "backup", "db", ".env", "git"]):
+                            severity = "medium"
+                        if "login" in path_lower or "signin" in path_lower:
+                            severity = "low"
+                    
+                    # Construct full URL safely
+                    full_url = f"{target_url.rstrip('/')}/{str(path).lstrip('/')}"
+
+                    findings.append({
+                        "tool": "dirsearch",
+                        "title": title,
+                        "severity": severity,
+                        "description": description,
+                        "cve": "N/A",
+                        "url": full_url,
+                        "status": status
+                    })
+
+    except Exception as e:
+        logger.error(f"Error reading Dirsearch file {file_path}: {e}")
+    
+    return findings
+
+def parse_wfuzz(file_path: str) -> List[Dict[str, Any]]:
+    """Parses Wfuzz JSON output."""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # Wfuzz JSON output is a list of objects
+            data = json.load(f)
+            
+            if not isinstance(data, list):
+                return findings
+
+            for item in data:
+                # Keys: code, chars, words, lines, payload, url
+                code = item.get("code")
+                chars = item.get("chars")
+                payload = item.get("payload")
+                url = item.get("url")
+                
+                # Title
+                title = f"Wfuzz: Found {payload}"
+                
+                # Determine severity
+                severity = "info"
+                if code == 200:
+                    if "admin" in payload.lower() or "config" in payload.lower():
+                        severity = "high"
+                    elif "login" in payload.lower():
+                        severity = "medium"
+                    else:
+                        severity = "low"
+                elif code in [301, 302, 307]:
+                    severity = "low" # Redirects
+                
+                description = f"Resource found at '{payload}' returning Status {code} (Size: {chars} chars)."
+
+                findings.append({
+                    "tool": "wfuzz",
+                    "title": title,
+                    "severity": severity,
+                    "description": description,
+                    "cve": "N/A",
+                    "url": url,
+                    "status": code
+                })
+
+    except Exception as e:
+        logger.error(f"Error reading Wfuzz file {file_path}: {e}")
+    
+    return findings
+
+def parse_dalfox(file_path: str) -> List[Dict[str, Any]]:
+    """Parses Dalfox JSON output."""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            if not content:
+                return findings
+
+            data = []
+            # Dalfox can output a JSON list or NDJSON (line-by-line)
+            try:
+                data = json.loads(content)
+                if not isinstance(data, list):
+                    data = [data]
+            except json.JSONDecodeError:
+                # Try reading line by line
+                for line in content.splitlines():
+                    if line.strip():
+                        try:
+                            data.append(json.loads(line))
+                        except: pass
+
+            for item in data:
+                # Key Dalfox fields: message_str, payload, poc, severity
+                title = item.get("message_str", "XSS Vulnerability Detected")
+                payload = item.get("payload", "")
+                poc_link = item.get("poc", "")
+                
+                # Dalfox usually finds confirmed XSS
+                severity = "high" 
+                
+                description = f"Reflected XSS found.\nPayload: {payload}\nPoC: {poc_link}"
+
+                findings.append({
+                    "tool": "dalfox",
+                    "title": title,
+                    "severity": severity,
+                    "description": description,
+                    "cve": "N/A", # XSS usually CWE-79
+                    "url": poc_link,
+                    "solution": "Sanitize user input and output encoding."
+                })
+
+    except Exception as e:
+        logger.error(f"Error reading Dalfox file {file_path}: {e}")
+    
+    return findings
+
+def parse_grype(file_path: str) -> List[Dict[str, Any]]:
+    """Parses Grype JSON output."""
+    findings = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+            # Grype JSON has a 'matches' key
+            matches = data.get("matches", [])
+            
+            for match in matches:
+                vuln = match.get("vulnerability", {})
+                artifact = match.get("artifact", {})
+                
+                vuln_id = vuln.get("id")
+                severity = vuln.get("severity", "Low").lower()
+                desc = vuln.get("description", "No description provided.")
+                
+                pkg_name = artifact.get("name")
+                pkg_version = artifact.get("version")
+                pkg_type = artifact.get("type")
+                
+                title = f"{pkg_name} {pkg_version} ({pkg_type}) - {vuln_id}"
+                
+                # Grype severity mapping
+                if severity == "negligible": severity = "info"
+                if severity == "unknown": severity = "info"
+
+                findings.append({
+                    "tool": "grype",
+                    "title": title,
+                    "severity": severity,
+                    "description": desc,
+                    "cve": vuln_id, # Usually CVE-XXXX-XXXX
+                    "solution": f"Upgrade {pkg_name} to a fixed version if available.",
+                    "references": vuln.get("urls", [])
+                })
+
+    except Exception as e:
+        logger.error(f"Error reading Grype file {file_path}: {e}")
+    
+    return findings
