@@ -12,9 +12,12 @@ from sqlmodel import Session
 from app.worker.celery_app import celery_app
 from app.database import engine
 from app.models import Job, JobStatus, Notification
-from typing import List, Dict, Any, Optional
-from app.parsers import parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, parse_metasploit, parse_openvas, parse_whois
-from app.parsers import parse_whatweb, parse_dirsearch, parse_wfuzz,parse_dalfox, parse_grype
+from typing import List, Dict, Any, Optional, Tuple
+from app.parsers import (
+    parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, 
+    parse_metasploit, parse_openvas, parse_whois, parse_whatweb, 
+    parse_dirsearch, parse_wfuzz, parse_dalfox
+)
 from app.enrichment import get_cisa_kev_data, enrich_vulnerability
 from app.utils.nvd_sync import sync_nvd
 from app.utils.exploitdb import sync_exploitdb
@@ -156,15 +159,14 @@ def run_zap(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any
     # CAPTURE the result
     result = subprocess.run(cmd, check=False, capture_output=True, text=True)
     
-    # CHECK for failure
-    if result.returncode != 0:
+    # SUCCESS: ZAP returns 0 (no vulns) or 2 (vulnerabilities found)
+    if result.returncode in [0, 2]:
+        print("ZAP completed successfully.")
+        return output_file
+    else:
         print(f"ZAP FAILED. Return code: {result.returncode}")
         print(f"STDERR: {result.stderr}")
-        print(f"STDOUT: {result.stdout}")
-    else:
-        print("ZAP completed successfully.")
-        
-    return output_file
+        return None
 
 def run_wappalyzer(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting Wappalyzer for {target}...")
@@ -211,12 +213,8 @@ def run_whois(target: str, host_dir: str, internal_dir: str, config: Dict[str, A
         extracted = tldextract.extract(target)
         
         if extracted.registered_domain:
-            # e.g., 'www.google.co.uk' -> 'google.co.uk'
-            # e.g., 'google-gruyere.appspot.com' -> 'appspot.com'
             clean_target = extracted.registered_domain
         else:
-            # Fallback for IPs (e.g., '1.1.1.1') or local domains ('localhost')
-            # where registered_domain is empty.
             clean_target = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
 
     except Exception as e:
@@ -246,8 +244,6 @@ def run_whatweb(target: str, host_dir: str, internal_dir: str, config: Dict[str,
     raw_args = config.get("raw_args")
 
     # WhatWeb writes to file via --log-json
-    # We map the host volume to /output inside container
-    
     cmd = [
         "docker", "run", "--rm",
         "-v", f"{host_dir}:/output",
@@ -257,7 +253,6 @@ def run_whatweb(target: str, host_dir: str, internal_dir: str, config: Dict[str,
         target
     ]
     
-    ifRP = config.get("raw_args")
     if raw_args: cmd.extend(raw_args)
 
     try:
@@ -387,53 +382,6 @@ def run_dalfox(target: str, host_dir: str, internal_dir: str, config: Dict[str, 
         print(f"Dalfox Failed: {e}")
         return None
 
-def run_grype(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
-    print(f"Starting Grype for {target}...")
-    output_file = os.path.join(internal_dir, "grype.json")
-    
-    scope = config.get("scope", "Squashed")
-    raw_args = config.get("raw_args")
-
-    # Grype command to scan a target (Image name)
-    # We map the docker socket so Grype can see the images on the host
-    cmd = [
-        "docker", "run", "--rm",
-        "--volume", "/var/run/docker.sock:/var/run/docker.sock",
-        "local/grype",
-        target,
-        "-o", "json",
-        "--scope", scope
-    ]
-    
-    if raw_args: 
-        cmd.extend(raw_args)
-
-    try:
-        # Grype writes JSON to stdout
-        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-        
-        # Write stdout to file
-        if result.stdout:
-            with open(output_file, 'w') as f:
-                f.write(result.stdout)
-            
-            # Basic validation
-            try:
-                with open(output_file, 'r') as f:
-                    json.load(f)
-                print("Grype completed.")
-                return output_file
-            except:
-                print("Grype output was not valid JSON.")
-                return None
-        else:
-            print(f"Grype Failed (No Output): {result.stderr}")
-            return None
-
-    except Exception as e:
-        print(f"Grype Execution Error: {e}")
-        return None
-
 def run_openvas(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting OpenVAS for {target}...")
     
@@ -538,20 +486,25 @@ except Exception as e:
         print(f"OpenVAS Execution Error: {e}")
         return None
 
-def run_scanner_wrapper(scanner_func, job_id, tool_name, *args):
+def run_scanner_wrapper(scanner_func, job_id, tool_name, *args) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Wrapper to capture both Success Result and Failure Error Message.
+    Returns: (output_file_path, error_message)
+    """
     try:
         update_tool_status(job_id, tool_name, "running")
+        # Runners currently return just a path or None. 
         result = scanner_func(*args)
+        
         if result:
             update_tool_status(job_id, tool_name, "completed")
-            return result
+            return result, None
         else:
             update_tool_status(job_id, tool_name, "failed")
-            return None
+            return None, f"{tool_name} failed (no output generated)"
     except Exception as e:
-        print(f"Error in {tool_name}: {e}")
         update_tool_status(job_id, tool_name, "failed")
-        return None
+        return None, str(e)
 
 @celery_app.task(bind=True)
 def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
@@ -569,6 +522,7 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
         session.commit()
 
         output_paths: Dict[str, str] = {} 
+        tool_errors: Dict[str, str] = {} # New: Capture errors for AI
         normalized_data = {"ports": [], "vulnerabilities": [], "technologies": []}
         vulnerabilities = []
 
@@ -588,8 +542,8 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             "whatweb": run_whatweb,
             "dirsearch": run_dirsearch,
             "wfuzz": run_wfuzz,
-            "dalfox": run_dalfox,
-            "grype": run_grype,
+            "dalfox": run_dalfox
+            # Grype removed
         }
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -602,31 +556,33 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             for future in concurrent.futures.as_completed(future_to_scanner):
                 name = future_to_scanner[future]
                 try:
-                    result_path = future.result()
-                    if result_path: output_paths[name] = result_path
+                    res_path, error_msg = future.result()
+                    if res_path: 
+                        output_paths[name] = res_path
+                    if error_msg:
+                        tool_errors[name] = error_msg
                 except Exception as e: 
                     print(f"Scanner {name} exception: {e}")
+                    tool_errors[name] = str(e)
 
         failed_tools = [n for n, s in job.tool_status.items() if s == "failed"]
         all_failed = len(failed_tools) == len(scanners)
         
+        # --- PARSING ---
         if "nmap" in output_paths:
             res = parse_nmap(output_paths["nmap"])
-            normalized_data["host_info"] = res["host_info"]
-            normalized_data["ports"].extend(res["open_ports"])
+            normalized_data["host_info"] = res.get("host_info", {})
+            normalized_data["ports"].extend(res.get("open_ports", []))
         
         if "whois" in output_paths:
             print(f"Parsing Whois data from {output_paths['whois']}")
             whois_data = parse_whois(output_paths["whois"])
-            # Ensure host_info exists
             if "host_info" not in normalized_data: 
                 normalized_data["host_info"] = {}
-            # Merge Whois data
             normalized_data["host_info"].update(whois_data)
 
         if "whatweb" in output_paths:
             ww_tech = parse_whatweb(output_paths["whatweb"])
-            # Merge with existing technologies list if wappalyzer also ran
             if "technologies" not in normalized_data:
                 normalized_data["technologies"] = []
             normalized_data["technologies"].extend(ww_tech)
@@ -643,10 +599,6 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             df_vulns = parse_dalfox(output_paths["dalfox"])
             vulnerabilities.extend(df_vulns)
 
-        if "grype" in output_paths:
-            grype_vulns = parse_grype(output_paths["grype"])
-            vulnerabilities.extend(grype_vulns)
-
         if "nuclei" in output_paths: vulnerabilities.extend(parse_nuclei(output_paths["nuclei"]))
         if "nikto" in output_paths: vulnerabilities.extend(parse_nikto(output_paths["nikto"]))
         if "zap" in output_paths: vulnerabilities.extend(parse_zap(output_paths["zap"]))
@@ -657,6 +609,7 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
         cisa_cache = get_cisa_kev_data()
         enriched_vulns = [enrich_vulnerability(v, cisa_cache) for v in vulnerabilities]
         normalized_data["vulnerabilities"] = enriched_vulns
+        normalized_data["tool_errors"] = tool_errors # Persist errors for AI
 
         job.status = JobStatus.FAILED if all_failed else (JobStatus.PARTIAL_SUCCESS if failed_tools else JobStatus.COMPLETED)
         job.output_files = output_paths

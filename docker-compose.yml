@@ -197,14 +197,6 @@ services:
     entrypoint: ["/app/dalfox", "version"]
     restart: "no"
 
-  grype:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.grype
-    image: local/grype
-    container_name: sih-grype-builder
-    entrypoint: ["/grype", "version"]
-    restart: "no"
 
 volumes:
   postgres_data:

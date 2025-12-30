@@ -12,7 +12,6 @@ import { WhatWebConfigForm } from "./configs/WhatWebConfigForm";
 import { DirsearchConfigForm } from "./configs/DirsearchConfigForm";
 import { WfuzzConfigForm } from "./configs/WfuzzConfigForm";
 import { DalfoxConfigForm } from "./configs/DalfoxConfigForm";
-import { GrypeConfigForm } from "./configs/GrypeConfigForm";
 
 const DEFAULT_CONFIGS = {
   nmap: { ports: "", speed: "T4", script: "" },
@@ -27,7 +26,6 @@ const DEFAULT_CONFIGS = {
   dirsearch: { extensions: "php,html,js,txt", threads: 50 },
   wfuzz: { wordlist: "common.txt", hide_codes: "404" },
   dalfox: { blind_url: "scanme.nmap.org" },
-  grype: { scope: "Squashed" }
 };
 
 // FIX: Added currentConfig to props
@@ -65,7 +63,6 @@ const ScannerConfigDrawer = ({ open, scannerId, currentConfig, onClose, onSave }
       {scannerId === "dirsearch" && <DirsearchConfigForm config={config} setConfig={setConfig} />}
       {scannerId === "wfuzz" && <WfuzzConfigForm config={config} setConfig={setConfig} />}
       {scannerId === "dalfox" && <DalfoxConfigForm config={config} setConfig={setConfig} />}
-      {scannerId === "grype" && <GrypeConfigForm config={config} setConfig={setConfig} />}
 
       <button
         className="w-full mt-6 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"

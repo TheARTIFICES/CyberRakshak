@@ -67,11 +67,6 @@ const scanners: ScannerItem[] = [
     name: "Dalfox",
     description: "Parameter analysis and XSS scanning tool.",
   },
-  {
-    id: "grype",
-    name: "Grype",
-    description: "Vulnerability scanner for container images and filesystems.",
-  },
 ];
 
 interface Props {

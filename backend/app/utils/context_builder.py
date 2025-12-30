@@ -2,41 +2,64 @@ from typing import Dict, Any, List
 
 def build_unified_context(job_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Transforms the existing normalized_report into the 
-    Unified Security Context required by the AI module.
+    Constructs the Unified Security Context for the AI.
+    Strictly structures data to prevent 'Script Mode' hallucinations.
     """
     report = job_data.get("normalized_report", {})
     
+    # Initialize Context
     context = {
         "target": job_data.get("target"),
-        "access_level": job_data.get("access_level", "none"), # Default to none for MVP
+        "access_level": job_data.get("access_level", "none"),
         "services": [],
+        "tech_stack": report.get("technologies", []),
         "web_findings": [],
-        "confirmed_cves": [],
-        "raw_outputs": job_data.get("tool_status", {}) # Summarized status
+        "tool_errors": report.get("tool_errors", {}),
+        "evidence_state": {
+            "initial_access_confirmed": False,
+            "rce_confirmed": False,
+            "xss_confirmed": False,
+            "sqli_confirmed": False,
+            "auth_bypass_confirmed": False
+        }
     }
 
-    # 1. Map Nmap results to 'services'
-    nmap_data = report.get("nmap", {})
-    for port in nmap_data.get("open_ports", []):
+    # 1. Map Services (Nmap)
+    for port in report.get("ports", []):
         context["services"].append({
             "port": port.get("port"),
             "service": port.get("service"),
-            "version": f"{port.get('product')} {port.get('version')}".strip()
+            "product": port.get("product"),
+            "version": port.get("version"),
+            "protocol": port.get("protocol")
         })
 
-    # 2. Map Nuclei, Nikto, and ZAP to 'web_findings' and 'confirmed_cves'
-    vulnerability_tools = ["nuclei", "nikto", "zap", "dirsearch"]
-    for tool in vulnerability_tools:
-        tool_findings = report.get(tool, [])
-        for vuln in tool_findings:
-            description = vuln.get("title") or vuln.get("description")
-            context["web_findings"].append(f"[{tool.upper()}] {description}")
-            
-            if vuln.get("cve") and vuln.get("cve") != "N/A":
-                context["confirmed_cves"].append(vuln.get("cve"))
+    # 2. Map Vulnerabilities to Structured Objects (Fix 2)
+    # We aggregate all parsers that populate the 'vulnerabilities' list in normalized_report
+    for vuln in report.get("vulnerabilities", []):
+        tool_name = vuln.get("tool", "unknown").upper()
+        
+        # Determine strict severity
+        severity = vuln.get("severity", "info").lower()
+        if severity not in ["critical", "high", "medium", "low", "info"]:
+            severity = "info"
 
-    # Remove duplicates from CVE list
-    context["confirmed_cves"] = list(set(context["confirmed_cves"]))
-    
+        # Check for Proof of Concept (Gap 1 Fix)
+        # Scan reports rarely have a working PoC unless it's a specific exploit tool
+        poc_present = False
+        if tool_name in ["METASPLOIT", "NUCLEI"] and severity in ["critical", "high"]:
+            # Nuclei/Metasploit imply a higher confidence of exploitability
+            poc_present = True
+
+        entry = {
+            "tool": tool_name,
+            "type": vuln.get("title", "Unknown Issue"),
+            "severity": severity.capitalize(),
+            "cve": vuln.get("cve", "N/A"),
+            "poc_present": poc_present,
+            "confirmed": False # Scanners are rarely 100% confirmed without manual verification
+        }
+        
+        context["web_findings"].append(entry)
+
     return context
