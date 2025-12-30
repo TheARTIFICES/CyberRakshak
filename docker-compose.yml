@@ -56,8 +56,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
-      - GEMINI_API_KEY=AIzaSyBfqflb-Z9ND6aGCzYZBVfzptg9_DHLSuE
-      - GEMINI_MODEL=gemini-2.5-flash
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
     volumes:
       - ./backend:/app
     depends_on:
