@@ -191,3 +191,13 @@ htmlcov/
 # Test reports
 test-results/
 test-report.xml
+
+# RAG Storage - exclude large index and metadata files, keep folders
+backend/rag_storage/*.index
+backend/rag_storage/*.json
+backend/rag_backup/*.index
+backend/rag_backup/*.json
+
+# Keep the folders with .gitkeep
+!backend/rag_storage/.gitkeep
+!backend/rag_backup/.gitkeep

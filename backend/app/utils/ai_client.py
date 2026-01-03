@@ -2,78 +2,105 @@ import os
 import httpx
 import json
 import logging
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL")
 
-async def generate_ai_response(payload: dict) -> str:
+# Configuration for remote GPU calls
+# TIMEOUT: 1800 seconds = 30 minutes. Adjust if needed for longer/shorter waits.
+TIMEOUT_CONFIG = httpx.Timeout(1800.0, connect=60.0)
+HEADERS = {
+    "ngrok-skip-browser-warning": "true",
+    "Content-Type": "application/json"
+}
+
+async def get_remote_embedding(text: str) -> Optional[List[float]]:
     """
-    Sends the Unified JSON Context to the remote AI Brain.
-    Includes extended timeouts and debug logging.
+    Calls POST /embed on the external GPU service.
+    Enforces "query: " prefix and L2 normalization logic.
     """
     if not AI_SERVICE_URL:
-        return json.dumps({
-            "mode": "TROUBLESHOOTING_MODE",
-            "analysis_summary": "System Error: AI_SERVICE_URL is not configured in backend .env."
-        })
+        logger.error("AI_SERVICE_URL not set.")
+        return None
 
-    url = f"{AI_SERVICE_URL.rstrip('/')}/v1/pentest-analyze"
+    url = f"{AI_SERVICE_URL.rstrip('/')}/embed"
+
+    # 1. Enforce Prefixing Rule
+    # The embedding model requires "query: " prefix for retrieval queries.
+    if not text.startswith("query: "):
+        text = f"query: {text}"
     
-    # Headers to bypass Ngrok warning and ensure JSON
-    headers = {
-        "ngrok-skip-browser-warning": "true",
-        "Content-Type": "application/json"
-    }
-
-    # EXTENDED TIMEOUT: 300 seconds (5 minutes) to allow long generations
-    timeout_config = httpx.Timeout(300.0, connect=60.0)
+    payload = {"text": text}
 
     try:
-        logger.info(f"Sending payload to AI Brain: {url} (Timeout: 300s)")
-        
-        async with httpx.AsyncClient(timeout=timeout_config) as client:
-            response = await client.post(url, json=payload, headers=headers)
+        # Log payload for verification (temporary)
+        logger.info(f"Embedding Request Payload: {payload}")
+
+        async with httpx.AsyncClient(timeout=TIMEOUT_CONFIG) as client:
+            response = await client.post(url, json=payload, headers=HEADERS)
             
         if response.status_code == 200:
-            try:
-                result = response.json()
-                logger.info("AI Brain response received successfully.")
-                
-                # Handle old format {"analysis": "..."} vs new direct JSON
-                if "analysis" in result:
-                    content = result["analysis"]
-                    if isinstance(content, str) and content.strip().startswith("{"):
-                        try: 
-                            return json.dumps(json.loads(content)) 
-                        except: 
-                            pass
-                    return json.dumps(content) if not isinstance(content, str) else content
-
-                return json.dumps(result)
-
-            except json.JSONDecodeError:
-                logger.error(f"Invalid JSON from AI: {response.text[:500]}")
-                return json.dumps({
-                    "mode": "TROUBLESHOOTING_MODE",
-                    "analysis_summary": "Error: AI returned invalid data (parsing failed)."
-                })
+            data = response.json()
+            # Expecting format: {"embedding": [float...], "dim": 1024}
+            raw_embedding = data.get("embedding")
+            
+            if raw_embedding:
+                # 2. Enforce L2 Normalization
+                # FAISS IndexFlatIP requires normalized vectors.
+                try:
+                    import numpy as np
+                    vec = np.array(raw_embedding, dtype=np.float32)
+                    norm = np.linalg.norm(vec)
+                    if norm > 0:
+                        vec = vec / norm
+                        
+                    # Log norm for verification (temporary)
+                    logger.info(f"Embedding Norm: {norm:.4f} -> {np.linalg.norm(vec):.4f}")
+                    
+                    return vec.tolist()
+                except ImportError:
+                    logger.warning("Numpy not found. Returning raw embedding (may reduce retrieval quality).")
+                    return raw_embedding
+            return None
         else:
-            logger.error(f"AI Error Status: {response.status_code} - {response.text[:200]}")
-            return json.dumps({
-                "mode": "TROUBLESHOOTING_MODE",
-                "analysis_summary": f"System Error: AI Brain returned status {response.status_code}."
-            })
+            logger.error(f"Embedding failed: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        logger.error(f"Embedding Connection Error: {e}")
+        return None
+
+async def generate_llm_response(prompt: str) -> str:
+    """
+    Calls POST /generate on the external GPU service.
+    """
+    if not AI_SERVICE_URL:
+        return '{"analysis": "System Error: AI URL not configured."}'
+
+    url = f"{AI_SERVICE_URL.rstrip('/')}/generate"
+    payload = {"prompt": prompt}
+
+    try:
+        logger.info(f"Sending prompt to LLM (Length: {len(prompt)})")
+        async with httpx.AsyncClient(timeout=TIMEOUT_CONFIG) as client:
+            response = await client.post(url, json=payload, headers=HEADERS)
+            
+        if response.status_code == 200:
+            result = response.json()
+            # Expecting format: {"response": "..."}
+            return result.get("response", "")
+        else:
+            logger.error(f"Generation failed: {response.status_code}")
+            return f"Error: AI Service returned {response.status_code}"
 
     except httpx.ReadTimeout:
-        logger.error("AI Timeout: The model took too long to generate a response.")
-        return json.dumps({
-            "mode": "TROUBLESHOOTING_MODE",
-            "analysis_summary": "Timeout Error: The AI is thinking too hard. Try a simpler query or request a shorter response."
-        })
+        return "Error: The model took too long to respond."
     except Exception as e:
-        logger.error(f"AI Connection Exception: {type(e).__name__} - {str(e)}")
-        return json.dumps({
-            "mode": "TROUBLESHOOTING_MODE",
-            "analysis_summary": f"Connection Error: {str(e)}"
-        })
+        logger.error(f"Generation Connection Error: {e}")
+        return f"Error: {str(e)}"
+
+# Deprecated: Keep purely for legacy compatibility if needed, 
+# but ChatAssistantService will now use the functions above.
+async def generate_ai_response(payload: dict) -> str:
+    return await generate_llm_response(json.dumps(payload))

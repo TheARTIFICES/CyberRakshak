@@ -34,3 +34,6 @@ fastapi-mail
 matplotlib
 scipy
 httpx
+
+# --- RAG Support ---
+faiss-cpu
