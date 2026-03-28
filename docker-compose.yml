@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_DB: sih_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -144,7 +144,7 @@ services:
     image: nginx:latest
     container_name: sih-nginx
     ports:
-      - "80:80" # Expose Port 80 to the world
+      - "8080:80" # Expose Port 80 to the world via 8080 on the host
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: always

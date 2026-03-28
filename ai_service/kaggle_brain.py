@@ -12,6 +12,13 @@ import time
 import asyncio
 
 # ============================================================
+# CRITICAL: SET BEFORE TORCH IMPORT
+# Prevents fragmentation-related OOM during model loading
+# ============================================================
+
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+
+# ============================================================
 # HARD MEMORY RESET (GPU + CPU)
 # ============================================================
 
@@ -19,7 +26,6 @@ print("🧹 Performing full memory cleanup (CPU + GPU)...")
 
 # ───── CPU MEMORY RESET ─────
 
-# Delete known heavy globals defensively
 for name in list(globals().keys()):
     if any(k in name.lower() for k in [
         "model", "embed_model", "tokenizer", "pipe", "server"
@@ -29,10 +35,8 @@ for name in list(globals().keys()):
         except:
             pass
 
-# Force Python garbage collection
 gc.collect()
 
-# Attempt to trim malloc arenas (Linux/glibc only, safe no-op otherwise)
 try:
     import ctypes
     libc = ctypes.CDLL("libc.so.6")
@@ -61,7 +65,22 @@ print("🧹 Memory reset finished\n")
 
 # ============================================================
 # DEPENDENCY ENSURE
+#
+# IMPORTANT: transformers is pinned to 4.46.3.
+# transformers 5.x rewrote the model loading pipeline
+# (convert_and_load_state_dict_in_model) and broke max_memory
+# enforcement during bitsandbytes fp16 staging — causing OOM
+# on GPU 1 even with a 13GiB cap set. 4.46.3 is the last
+# stable 4.x release where max_memory + bnb works correctly.
 # ============================================================
+
+print("📦 Pinning transformers to 4.46.3 (5.x breaks max_memory with bitsandbytes)...")
+subprocess.check_call([
+    sys.executable, "-m", "pip", "install",
+    "transformers==4.46.3",
+    "--quiet", "--force-reinstall", "--no-deps"
+])
+print("✅ transformers 4.46.3 installed")
 
 REQUIRED_PACKAGES = [
     "fastapi",
@@ -69,15 +88,15 @@ REQUIRED_PACKAGES = [
     "nest-asyncio",
     "pyngrok",
     "torch",
-    "transformers",
     "accelerate",
     "sentence-transformers",
-    "bitsandbytes"  # Required for 4-bit quantization
+    "bitsandbytes",
+    "huggingface_hub"
 ]
 
 def ensure(pkg):
     try:
-        __import__(pkg.replace("-", "_"))
+        __import__(pkg.split("==")[0].replace("-", "_"))
     except ImportError:
         print(f"📦 Installing missing package: {pkg}")
         subprocess.check_call(
@@ -99,22 +118,69 @@ from fastapi import FastAPI
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from pyngrok import ngrok
+from huggingface_hub import login
 import uvicorn
+
+# Confirm the transformers version actually loaded
+import transformers
+print(f"✅ transformers version: {transformers.__version__}")
+
+# ============================================================
+# HUGGING FACE LOGIN
+# Required for gated models (e.g. WhiteRabbitNeo-v3-7B)
+# Reads HF_TOKEN from Kaggle Secrets → env var fallback
+# ============================================================
+
+print("🔐 Logging in to Hugging Face...")
+
+try:
+    from kaggle_secrets import UserSecretsClient
+    HF_TOKEN = UserSecretsClient().get_secret("HF_TOKEN")
+except Exception:
+    HF_TOKEN = os.getenv("HF_TOKEN")
+
+if not HF_TOKEN:
+    HF_TOKEN = input("Enter Hugging Face token: ").strip()
+
+login(token=HF_TOKEN)
+print("✅ Hugging Face login successful")
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
 EMBED_MODEL_NAME = "BAAI/bge-large-en-v1.5"
-LLM_MODEL_NAME   = "Qwen/Qwen2.5-14B-instruct"
+LLM_MODEL_NAME   = "WhiteRabbitNeo/WhiteRabbitNeo-v3-7B"
 
-EMBED_DEVICE = "cpu"   # stable + deterministic
-DTYPE = torch.float16  # Required for T4 GPUs
+EMBED_DEVICE = "cpu"  # stable + deterministic
 
-# Minimal system prompt - Backend controls the actual persona via the user message content
-# This just ensures the model follows instructions and stops cleanly
+# 13GiB per GPU leaves ~3GB headroom for:
+#   - CUDA context overhead (~1.5GB)
+#   - fp16 staging buffer during bnb quantization
+#   - KV cache during inference
+# CPU acts as overflow for any layers that don't fit
+MAX_MEMORY = {
+    0: "13GiB",
+    1: "13GiB",
+    "cpu": "20GiB"
+}
+
+# Minimal system prompt — backend controls the actual persona via user message content
 SYSTEM_PROMPT = """You are a helpful AI assistant. Follow the instructions provided in the user message precisely. Be concise, stop immediately after answering, and do not repeat yourself."""
 
+
+# ============================================================
+# SILENCE SPURIOUS LOAD WARNINGS
+#
+# BGE models emit an "embeddings.position_ids UNEXPECTED" entry
+# in the BertModel LOAD REPORT. This is harmless — position_ids
+# is a registered buffer in newer BERT but wasn't saved in older
+# checkpoints. Suppressing at ERROR level keeps logs clean
+# without hiding anything meaningful.
+# ============================================================
+
+import logging
+logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
 # ============================================================
 # LOAD EMBEDDING MODEL
@@ -135,7 +201,7 @@ def embed_text(text: str):
     - prefix with 'query:'
     - normalized embeddings
     - output dim = 1024
-    
+
     NOTE: Backend already adds 'query: ' prefix, so we only add if missing
     to avoid double-prefixing which would break retrieval.
     """
@@ -148,25 +214,18 @@ def embed_text(text: str):
     return vec.tolist()
 
 # ============================================================
-# LOAD LLM (AUTO GPU SHARDING)
+# LOAD LLM (FP16, BALANCED SHARDING)
 # ============================================================
 
-print("🔹 Loading LLM with 4-bit quantization...")
+print("🔹 Loading LLM in fp16 precision...")
 
 tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL_NAME)
-
-# 4-bit quantization config for T4 GPU (16GB)
-quant_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_compute_dtype=torch.float16,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4"
-)
 
 model = AutoModelForCausalLM.from_pretrained(
     LLM_MODEL_NAME,
     device_map="auto",
-    quantization_config=quant_config,
+    max_memory=MAX_MEMORY,
+    torch_dtype=torch.float16,
     low_cpu_mem_usage=True
 )
 
@@ -175,62 +234,77 @@ model.eval()
 if hasattr(model, "hf_device_map"):
     print("🧠 LLM device map:")
     for k, v in model.hf_device_map.items():
-        print(f"  {k} -> GPU {v}")
+        print(f"  {k} -> {v}")
 
-print("✅ LLM ready (4-bit quantized)")
+print("✅ LLM ready (fp16)")
 
-def generate_text(prompt: str):
-    # Wrap raw prompt in chat format for Qwen
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": prompt}
-    ]
-    
-    # Apply chat template
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
+# ============================================================
+# GENERATION
+# ============================================================
+
+# WhiteRabbitNeo-v3-7B does not ship a chat_template in its
+# tokenizer, so apply_chat_template() raises ValueError.
+# The model uses a plain ### Instruction / ### Response format.
+# System prompt is prepended before the instruction block.
+def _build_prompt(system: str, user: str) -> str:
+    return (
+        f"{system}\n\n"
+        f"### Instruction:\n{user}\n\n"
+        f"### Response:\n"
     )
 
-    # Tokenize and move to model's device (first layer's device for sharded models)
+def generate_text(prompt: str):
+    text = _build_prompt(SYSTEM_PROMPT, prompt)
+
+    # Fix pad_token: WRN tokenizer has no pad token set, which causes
+    # the "pad_token_id is None" warning and unstable generation.
+    # Setting it to eos_token is the standard fix for decoder-only models.
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
     inputs = tokenizer(
         text,
         return_tensors="pt",
         truncation=True,
         max_length=4096
     )
-    
+
     # Move inputs to the device of the first model layer
     device = next(model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
+    # Stop tokens: eos + the literal strings that mark a new prompt cycle.
+    # Without these the model loops back into ### Instruction: endlessly.
+    stop_strings = ["### Instruction:", "### Response:", "<|endoftext|>"]
+    stop_ids = []
+    for s in stop_strings:
+        ids = tokenizer.encode(s, add_special_tokens=False)
+        if ids:
+            stop_ids.append(ids[0])  # stop on first token of each stop string
+    stop_ids = list(set([tokenizer.eos_token_id] + stop_ids))
+
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_new_tokens=2048,
+            max_new_tokens=512,       # tightened: 2048 was letting loops run forever
             do_sample=False,
-            use_cache=True
+            use_cache=True,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=stop_ids,
+            repetition_penalty=1.1,   # mild penalty to break repetitive loops
         )
 
-    # DEBUG: print lengths
-    input_length = inputs["input_ids"].shape[1]
+    input_length  = inputs["input_ids"].shape[1]
     output_length = output[0].shape[0]
     print(f"DEBUG: Input tokens: {input_length}, Output tokens: {output_length}, New tokens: {output_length - input_length}")
-    
+
+    # Decode only the newly generated tokens (excludes the input prompt)
     generated_tokens = output[0][input_length:]
     response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
-    
+
     print(f"DEBUG: Response preview: {response[:200]}")
 
-    # Only decode the NEW tokens (exclude input prompt)
-    input_length = inputs["input_ids"].shape[1]
-    generated_tokens = output[0][input_length:]
-    
-    return tokenizer.decode(
-        generated_tokens,
-        skip_special_tokens=True
-    )
+    return response
 
 # ============================================================
 # FASTAPI APP
@@ -257,7 +331,7 @@ async def embed(payload: dict):
 
     return {
         "embedding": embedding,
-        "dim": len(embedding)  # MUST be 1024
+        "dim": len(embedding)   # MUST be 1024
     }
 
 @app.post("/generate")
@@ -278,7 +352,7 @@ async def generate(payload: dict):
 
 def start_server():
     import threading
-    
+
     try:
         from kaggle_secrets import UserSecretsClient
         NGROK_TOKEN = UserSecretsClient().get_secret("NGROK_TOKEN")
@@ -293,24 +367,21 @@ def start_server():
     for t in ngrok.get_tunnels():
         ngrok.disconnect(t.public_url)
 
-    # Start uvicorn in a separate thread FIRST
     def run_server():
         uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-    
+
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    
-    # Give uvicorn a moment to start
+
     time.sleep(3)
-    
-    # Now connect ngrok
+
     url = ngrok.connect(8000)
     print("\n" + "="*50)
     print("🚀 AI MODULE LIVE AT:")
     print(url.public_url)
     print("="*50)
     print("➡️  Set AI_SERVICE_URL to this value in backend\n")
-    
+
     return url.public_url
 
 # ============================================================
@@ -321,11 +392,9 @@ if __name__ == "__main__":
     print("🚀 Starting CyberRakshak AI Module...")
     public_url = start_server()
 
-    # Keep process alive
     print("✅ Server running. Press Ctrl+C to stop.")
     try:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
         print("\n🛑 Shutting down...")
-

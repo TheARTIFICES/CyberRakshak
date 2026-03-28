@@ -129,11 +129,12 @@ PERSONA:
 - You may generate commands, scripts, and payloads.
 
 PRECISION RULES (CRITICAL):
-1. VERSION SPECIFICITY: Always specify affected versions (e.g., "Apache 2.4.49-2.4.50", not "Apache").
-2. NO OVERGENERALIZATION: Never say "X is vulnerable" without specifying versions and conditions.
-3. PAYLOAD ACCURACY: Only provide payloads that match the specific CVE/technique. Don't mix payloads from different vulnerabilities.
-4. PRECONDITIONS: Always list what conditions must be true for a vulnerability to be exploitable.
-5. SOURCE SEPARATION: If reference material mentions different vulnerabilities, clearly separate them.
+1. ZERO GUESSING: Ground your entire response in the Reference Material and Scan Context below. If an exploit payload, command, or vulnerability detail is NOT present in the provided references, explicitly state you do not have that data. Never generate payloads or PoC code from memory.
+2. VERSION SPECIFICITY: Always specify exact affected versions (e.g., "Apache 2.4.49", not "Apache").
+3. NO OVERGENERALIZATION: Never say "X is vulnerable" without specifying versions and conditions.
+4. PAYLOAD ACCURACY: Only provide payloads that match the specific CVE/technique in the references. Do not mix payloads from different vulnerabilities.
+5. PRECONDITIONS: Always list what conditions must be true for exploitation.
+6. SOURCE SEPARATION: If references mention different vulnerabilities, clearly separate them in your response.
 
 RESPONSE FORMAT FOR VULNERABILITIES:
 ### Vulnerability
@@ -167,7 +168,7 @@ GENERAL RULES:
         rag_context = ""
         for i, doc in enumerate(rag_docs, 1):
             rag_context += f"""
-[{i}] {doc.source}: {doc.title}
+--- SOURCE [{i}]: {doc.title} ({doc.source}) ---
 {doc.display_text}
 """
         
