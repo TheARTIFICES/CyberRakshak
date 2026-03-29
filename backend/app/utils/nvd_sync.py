@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from sqlmodel import Session, select, delete
 from app.database import engine
-from app.models import VulnerabilityMetadata
+from app.models import VulnerabilityMetadata, get_ist_time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +17,7 @@ def remove_stale_data(days: int = 180):
     """
     Removes records that haven't been updated in 'days'.
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = get_ist_time() - timedelta(days=days)
     logger.info(f"Cleaning up data older than {cutoff_date}...")
     
     with Session(engine) as session:
@@ -141,7 +141,7 @@ def sync_nvd(days_back: int = 90):
                     vuln_meta.cvss_score = cvss_data.get("baseScore", 0.0) if cvss_data else 0.0
                     vuln_meta.severity = cvss_data.get("baseSeverity", "UNKNOWN") if cvss_data else "UNKNOWN"
                     vuln_meta.vector_string = cvss_data.get("vectorString") if cvss_data else None
-                    vuln_meta.last_updated = datetime.utcnow()
+                    vuln_meta.last_updated = get_ist_time()
 
                     session.add(vuln_meta)
 

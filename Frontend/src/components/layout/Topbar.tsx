@@ -25,7 +25,6 @@ const Topbar = () => {
     "/attack-path": { title: "Attack Path Analysis", subtitle: "Visualize exploit chains and high-risk routes." },
     "/threat-intel": { title: "Threat Intelligence", subtitle: "Real-time feed of global vulnerabilities." },
     "/reports": { title: "Reports", subtitle: "Centralized repository for audits and summaries." },
-    "/remediation": { title: "Remediation Operations", subtitle: "Automated defense console." },
     "/audit-logs": { title: "Audit Logs", subtitle: "System activity and user actions." },
     "/settings": { title: "Settings", subtitle: "Platform configuration and preferences." },
     "/profile": { title: "User Profile", subtitle: "Manage your account details and preferences." }

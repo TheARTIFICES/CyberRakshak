@@ -149,7 +149,7 @@ print("✅ Hugging Face login successful")
 # CONFIGURATION
 # ============================================================
 
-EMBED_MODEL_NAME = "BAAI/bge-large-en-v1.5"
+EMBED_MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
 LLM_MODEL_NAME   = "WhiteRabbitNeo/WhiteRabbitNeo-v3-7B"
 
 EMBED_DEVICE = "cpu"  # stable + deterministic
@@ -172,11 +172,8 @@ SYSTEM_PROMPT = """You are a helpful AI assistant. Follow the instructions provi
 # ============================================================
 # SILENCE SPURIOUS LOAD WARNINGS
 #
-# BGE models emit an "embeddings.position_ids UNEXPECTED" entry
-# in the BertModel LOAD REPORT. This is harmless — position_ids
-# is a registered buffer in newer BERT but wasn't saved in older
-# checkpoints. Suppressing at ERROR level keeps logs clean
-# without hiding anything meaningful.
+# Embedding models may emit unexpected key warnings during load.
+# This is harmless. Suppressing at ERROR level keeps logs clean.
 # ============================================================
 
 import logging
@@ -190,7 +187,8 @@ print("🔹 Loading embedding model on CPU...")
 
 embed_model = SentenceTransformer(
     EMBED_MODEL_NAME,
-    device=EMBED_DEVICE
+    device=EMBED_DEVICE,
+    trust_remote_code=True  # Required for nomic models
 )
 
 print("✅ Embedding model ready")
@@ -198,15 +196,15 @@ print("✅ Embedding model ready")
 def embed_text(text: str):
     """
     MUST match FAISS build settings:
-    - prefix with 'query:'
+    - prefix with 'search_query:' (nomic-embed-text-v1.5 convention)
     - normalized embeddings
-    - output dim = 1024
+    - output dim = 768
 
-    NOTE: Backend already adds 'query: ' prefix, so we only add if missing
-    to avoid double-prefixing which would break retrieval.
+    NOTE: Backend already adds 'search_query: ' prefix, so we only add
+    if missing to avoid double-prefixing which would break retrieval.
     """
-    if not text.startswith("query:"):
-        text = "query: " + text
+    if not text.startswith("search_query:"):
+        text = "search_query: " + text
     vec = embed_model.encode(
         text,
         normalize_embeddings=True
@@ -331,7 +329,7 @@ async def embed(payload: dict):
 
     return {
         "embedding": embedding,
-        "dim": len(embedding)   # MUST be 1024
+        "dim": len(embedding)   # MUST be 768
     }
 
 @app.post("/generate")

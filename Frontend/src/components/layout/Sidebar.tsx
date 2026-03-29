@@ -23,7 +23,6 @@ const menu = [
   { path: "/attack-path", label: "Attack Path", icon: Map },
   { path: "/threat-intel", label: "Threat Intelligence", icon: Globe },
   { path: "/reports", label: "Reports", icon: FileText },
-  { path: "/remediation", label: "Remediation", icon: ClipboardCheck },
   { path: "/assistant", label: "Chat Assistant", icon: MessageCircle },
   { path: "/audit-logs", label: "Audit Logs", icon: Activity },
 ];

@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, Optional
 from sqlmodel import Session
 from app.database import engine
-from app.models import VulnerabilityMetadata
+from app.models import VulnerabilityMetadata, get_ist_time
 from app.utils.nvd_sync import fetch_nvd_data
 from app.utils.alienvault import get_alienvault_cve_data
 from datetime import datetime, timedelta
@@ -76,7 +76,7 @@ def enrich_vulnerability(vuln: Dict[str, Any], cisa_cache: Dict[str, Any]) -> Di
         # Sync AlienVault if needed
         if cached_vuln:
             should_sync = not cached_vuln.otx_last_synced or \
-                          (datetime.utcnow() - cached_vuln.otx_last_synced > timedelta(days=7))
+                          (get_ist_time() - cached_vuln.otx_last_synced > timedelta(days=7))
             
             if should_sync:
                 otx = get_alienvault_cve_data(cve_id)
@@ -84,7 +84,7 @@ def enrich_vulnerability(vuln: Dict[str, Any], cisa_cache: Dict[str, Any]) -> Di
                     cached_vuln.otx_pulse_count = otx["pulse_count"]
                     cached_vuln.otx_tags = otx["tags"]
                     cached_vuln.otx_references = otx["references"]
-                    cached_vuln.otx_last_synced = datetime.utcnow()
+                    cached_vuln.otx_last_synced = get_ist_time()
                     session.add(cached_vuln)
                     session.commit()
                     session.refresh(cached_vuln)
@@ -123,7 +123,7 @@ def enrich_vulnerability(vuln: Dict[str, Any], cisa_cache: Dict[str, Any]) -> Di
                     cvss_score=nvd_info["cvss_score"],
                     severity=nvd_info["severity"],
                     is_cisa_kev=enrichment_data["cisa_kev"],
-                    otx_last_synced=datetime.utcnow()
+                    otx_last_synced=get_ist_time()
                 )
                 
                 # Fetch OTX immediately

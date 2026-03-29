@@ -35,22 +35,8 @@ class Settings(BaseSettings):
     AUTH_DISABLED: bool = True
 
     # --- RAG CONFIGURATION ---
-    # Path to RAG storage directory
+    # Path to RAG storage directory (contains cve_index.faiss + metadata_shard.jsonl)
     RAG_STORAGE_PATH: str = os.getenv("RAG_STORAGE_PATH", "rag_storage/")
-    
-    # Fallback mode uses legacy single-index RAG
-    RAG_FALLBACK_MODE: bool = os.getenv("RAG_FALLBACK_MODE", "false").lower() == "true"
-    
-    @staticmethod
-    def get_index_version(source: str) -> str:
-        """
-        Get versioned index name from environment.
-        
-        Example: Set ACTIVE_CVE_INDEX=cve_2025_01_01 to use a dated index.
-        Falls back to source name if not set.
-        """
-        env_key = f"ACTIVE_{source.upper()}_INDEX"
-        return os.getenv(env_key, source)
 
 settings = Settings()
 

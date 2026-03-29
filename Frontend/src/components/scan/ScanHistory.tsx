@@ -48,6 +48,10 @@ const ScanHistory = () => {
     };
 
     fetchHistory();
+
+    // Auto-refresh every 5 seconds
+    const interval = setInterval(fetchHistory, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleReportClick = async (jobId: string) => {

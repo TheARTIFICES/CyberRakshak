@@ -1,0 +1,2 @@
+backend/rag_storage/metadata_shard.jsonl filter=lfs diff=lfs merge=lfs -text
+backend/rag_storage/cve_index.faiss filter=lfs diff=lfs merge=lfs -text
