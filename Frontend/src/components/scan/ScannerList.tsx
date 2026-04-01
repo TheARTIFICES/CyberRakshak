@@ -43,9 +43,29 @@ const scanners: ScannerItem[] = [
     description: "Tech stack detection & fingerprinting.",
   },
   {
-    id: "nessus",
-    name: "Nessus",
-    description: "The industry standard for vulnerability assessment and compliance auditing.",
+    id: "whois",
+    name: "Whois",
+    description: "Domain registration, ownership details, and expiry data.",
+  },
+  {
+    id: "whatweb",
+    name: "WhatWeb",
+    description: "Next-gen web scanner to identify CMS, blogging platforms, and JS libraries.",
+  },
+  {
+    id: "dirsearch",
+    name: "Dirsearch",
+    description: "Web path scanner. Brute forces directories and files.",
+  },
+  {
+    id: "wfuzz",
+    name: "Wfuzz",
+    description: "Web application brute-forcer for discovery.",
+  },
+  {
+    id: "dalfox",
+    name: "Dalfox",
+    description: "Parameter analysis and XSS scanning tool.",
   },
 ];
 

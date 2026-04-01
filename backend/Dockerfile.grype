@@ -1,0 +1,17 @@
+FROM alpine:latest
+
+RUN apk update && apk add --no-cache ca-certificates wget tar
+
+# Detect architecture and download the correct Grype binary
+RUN ARCH=aarch64 && \
+    if [ "$ARCH" = "x86_64" ]; then GRYPE_ARCH="amd64"; \
+    elif [ "$ARCH" = "aarch64" ]; then GRYPE_ARCH="arm64"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi && \
+    wget -qO- "https://github.com/anchore/grype/releases/download/v0.79.0/grype_0.79.0_linux_${GRYPE_ARCH}.tar.gz" | tar xz -C /usr/local/bin
+
+RUN chmod +x /usr/local/bin/grype
+
+# Verify installation
+RUN grype --version
+
+ENTRYPOINT ["grype"]

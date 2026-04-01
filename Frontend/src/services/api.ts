@@ -105,7 +105,7 @@ interface VulnerabilityResponse {
 }
 
 interface JobHistoryResponse {
-  job_id: string;
+  id: string;
   target: string;
   status: string;
   created_at: string;
@@ -131,6 +131,7 @@ interface ReportResponse {
 interface ChatMessageRequest {
   message: string;
   history?: { role: "user" | "assistant"; content: string }[];
+  context_job_ids?: string[];
 }
 
 interface ChatMessageResponse {
@@ -247,6 +248,20 @@ export const getJobHistory = async (skip: number = 0, limit: number = 100): Prom
   return apiCall<JobHistoryResponse[]>(`/jobs?skip=${skip}&limit=${limit}`);
 };
 
+// Active Jobs API (returns running/pending jobs with tool_status)
+export interface ActiveJobResponse {
+  job_id: string;
+  target: string;
+  status: string;
+  created_at: string;
+  scanners_requested: string[];
+  tool_status: Record<string, string>;
+}
+
+export const getActiveJobs = async (): Promise<ActiveJobResponse[]> => {
+  return apiCall<ActiveJobResponse[]>('/jobs/active');
+};
+
 // Report APIs
 export const getReports = async (
   skip: number = 0, 
@@ -270,22 +285,24 @@ export const sendChatMessage = async (message: string): Promise<string> => {
 
 export async function* streamChatResponse(
   message: string, 
-  history: { role: "user" | "assistant"; content: string }[] = []
+  history: { role: "user" | "assistant"; content: string }[] = [],
+  contextJobIds: string[] = [] // Added parameter
 ): AsyncGenerator<string, void, unknown> {
   
   const url = `${API_BASE_URL}/chat/stream`;
-  console.log("🚀 Starting Stream Request to:", url); // DEBUG LOG
+  console.log("Starting Stream Request to:", url); 
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message, history }),
+    // Include context_job_ids in body
+    body: JSON.stringify({ message, history, context_job_ids: contextJobIds }),
   });
 
   if (!response.ok) {
-    console.error("❌ Stream Request Failed:", response.status);
+    console.error("Stream Request Failed:", response.status);
     throw new Error(`API call failed: ${response.status} ${response.statusText}`);
   }
   
@@ -297,16 +314,12 @@ export async function* streamChatResponse(
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        console.log("✅ Stream Complete");
-        break;
-      }
+      if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      console.log("📦 Chunk Received:", chunk); // DEBUG LOG
       yield chunk;
     }
   } catch (err) {
-    console.error("🔥 Stream Error:", err);
+    console.error("Stream Error:", err);
   } finally {
     reader.releaseLock();
   }

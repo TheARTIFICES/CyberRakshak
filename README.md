@@ -54,6 +54,53 @@ To get CyberRakshak running locally, you must use Docker Compose to manage the i
 
 ---
 
+```
+CyberRakshak/
+├── ai_service/                    # GPU AI Service (Kaggle)
+│   ├── kaggle_brain.py            # Main inference server
+│   ├── enrich_metadata.py         # RAG metadata enrichment
+│   ├── cve_parser.py              # CVE RAG builder
+│   ├── nuclei_parser.py           # Nuclei templates RAG builder
+│   ├── exploitdb_parser.py        # ExploitDB RAG builder
+│   ├── mitre_parser.py            # MITRE ATT&CK RAG builder
+│   ├── metasploit_parser.py       # Metasploit RAG builder
+│   ├── gtfobins_parser.py         # GTFOBins RAG builder
+│   ├── peass_parser.py            # LinPEAS RAG builder
+│   ├── owasp_parser.py            # OWASP Cheat Sheets RAG builder
+│   ├── nmap_nse_parser.py         # Nmap NSE scripts RAG builder
+│   ├── http_header_parser.py      # HTTP Headers RAG builder
+│   └── PayloadsAllTheThings_parser.py  # Payloads RAG builder
+├── backend/
+│   ├── app/
+│   │   ├── api.py                 # API endpoints
+│   │   ├── models.py              # Database models
+│   │   ├── database.py            # Database configuration
+│   │   ├── chat_assistant.py      # AI Chat service
+│   │   ├── intent_classifier.py   # Query intent classification
+│   │   ├── rag_registry.py        # RAG index management
+│   │   ├── rag_routing.py         # Intent-based RAG routing
+│   │   ├── rag_fusion.py          # Multi-source RAG fusion
+│   │   ├── worker/                # Celery worker tasks
+│   │   └── utils/                 # Utility functions
+│   ├── rag_storage/               # FAISS indexes & metadata (gitignored)
+│   ├── rag_backup/                # RAG data backups (gitignored)
+│   ├── docker-compose.yml         # Docker services configuration
+│   ├── Dockerfile.api             # API service Dockerfile
+│   ├── Dockerfile.worker          # Worker service Dockerfile
+│   └── requirements.txt           # Python dependencies
+├── Frontend/
+│   ├── src/
+│   │   ├── components/            # React components
+│   │   ├── pages/                 # Page components
+│   │   ├── services/              # API service layer
+│   │   ├── layouts/               # Layout components
+│   │   └── App.tsx                # Main application component
+│   ├── package.json               # Node.js dependencies
+│   └── vite.config.ts             # Vite configuration
+├── nginx/                         # Nginx reverse proxy config
+├── docker-compose.yml             # Root Docker Compose
+└── README.md
+```
 ## ⚙️ Technology Stack
 
 CyberRakshak utilizes a robust, modern, and scalable technology stack:

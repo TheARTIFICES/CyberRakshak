@@ -7,12 +7,17 @@ import concurrent.futures
 import urllib3
 import asyncio
 import re
+import tldextract
 from sqlmodel import Session
 from app.worker.celery_app import celery_app
 from app.database import engine
 from app.models import Job, JobStatus, Notification
-from typing import List, Dict, Any, Optional
-from app.parsers import parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, parse_metasploit, parse_openvas
+from typing import List, Dict, Any, Optional, Tuple
+from app.parsers import (
+    parse_nmap, parse_nuclei, parse_nikto, parse_zap, parse_wappalyzer, 
+    parse_metasploit, parse_openvas, parse_whois, parse_whatweb, 
+    parse_dirsearch, parse_wfuzz, parse_dalfox
+)
 from app.enrichment import get_cisa_kev_data, enrich_vulnerability
 from app.utils.nvd_sync import sync_nvd
 from app.utils.exploitdb import sync_exploitdb
@@ -41,7 +46,7 @@ def update_tool_status(job_id: uuid.UUID, tool_name: str, status: str):
             session.add(job)
             session.commit()
 
-# ... [KEEP Nmap, Nuclei, Nikto, Zap, Wappalyzer, Metasploit functions AS IS] ...
+# --- SCANNER RUNNERS ---
 
 def run_nmap(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting Nmap for {target}...")
@@ -50,24 +55,85 @@ def run_nmap(target: str, host_dir: str, internal_dir: str, config: Dict[str, An
     speed = config.get("speed", "T4")
     ports = config.get("ports")
     script = config.get("script")
+    script_args = config.get("script_args")
+    scan_type = config.get("scan_type")
     raw_args = config.get("raw_args")
 
     cmd = [
         "docker", "run", "--rm",
         "-v", f"{host_dir}:/output",
         "instrumentisto/nmap",
-        "-sV", f"-{speed}", 
+        f"-{speed}", 
         "-oX", "/output/nmap.xml"
     ]
     
+    # Scan type flag (e.g. -sS, -sT, -sU)
+    if scan_type:
+        cmd.append(f"-{scan_type}")
+
+    # Service detection (default on unless explicitly disabled)
+    if config.get("service_detection", True):
+        cmd.append("-sV")
+    
+    # OS detection
+    if config.get("os_detection"):
+        cmd.append("-O")
+    
+    # Aggressive scan (-A = OS + version + scripts + traceroute)
+    if config.get("aggressive"):
+        cmd.append("-A")
+    
+    # Skip host discovery
+    if config.get("skip_discovery"):
+        cmd.append("-Pn")
+    
+    # Ping scan only (no port scan)
+    if config.get("ping_only"):
+        cmd.append("-sn")
+    
+    # Fragment packets (evasion)
+    if config.get("fragment"):
+        cmd.append("-f")
+    
+    # Port specification
     if ports:
         if str(ports).startswith("top-"):
             cmd.extend(["--top-ports", ports.split("-")[1]])
         else:
             cmd.extend(["-p", ports])
 
-    if script: cmd.extend(["--script", script])
-    if raw_args: cmd.extend(raw_args)
+    # NSE scripts
+    if script:
+        cmd.extend(["--script", script])
+    
+    # Script arguments
+    if script_args:
+        cmd.extend(["--script-args", script_args])
+    
+    # Decoys (evasion)
+    decoys = config.get("decoys")
+    if decoys:
+        cmd.extend(["-D", decoys])
+    
+    # Rate limiting
+    max_rate = config.get("max_rate")
+    if max_rate:
+        cmd.extend(["--max-rate", str(max_rate)])
+    
+    min_rate = config.get("min_rate")
+    if min_rate:
+        cmd.extend(["--min-rate", str(min_rate)])
+    
+    # Verbosity
+    verbosity = config.get("verbosity")
+    if verbosity == "v":
+        cmd.append("-v")
+    elif verbosity == "vv":
+        cmd.append("-vv")
+
+    # Raw args always last (before target)
+    if raw_args:
+        cmd.extend(raw_args)
 
     cmd.append(target)
     
@@ -96,6 +162,36 @@ def run_nuclei(target: str, host_dir: str, internal_dir: str, config: Dict[str, 
         "-jsonl", "-o", "/output/nuclei.jsonl"
     ]
     if severity: cmd.extend(["-severity", severity])
+    
+    # Exclude tags
+    exclude_tags = config.get("exclude_tags")
+    if exclude_tags: cmd.extend(["-exclude-tags", exclude_tags])
+    
+    # Template IDs
+    template_id = config.get("template_id")
+    if template_id: cmd.extend(["-template-id", template_id])
+    
+    # Performance
+    rate_limit = config.get("rate_limit")
+    if rate_limit: cmd.extend(["-rate-limit", str(rate_limit)])
+    
+    bulk_size = config.get("bulk_size")
+    if bulk_size: cmd.extend(["-bulk-size", str(bulk_size)])
+    
+    concurrency = config.get("concurrency")
+    if concurrency: cmd.extend(["-concurrency", str(concurrency)])
+    
+    timeout = config.get("timeout")
+    if timeout: cmd.extend(["-timeout", str(timeout)])
+    
+    retries = config.get("retries")
+    if retries: cmd.extend(["-retries", str(retries)])
+    
+    # Features
+    if config.get("headless"): cmd.append("-headless")
+    if config.get("new_templates"): cmd.append("-new-templates")
+    if config.get("automatic_scan"): cmd.append("-automatic-scan")
+    
     if raw_args: cmd.extend(raw_args)
 
     try:
@@ -110,7 +206,7 @@ def run_nikto(target: str, host_dir: str, internal_dir: str, config: Dict[str, A
     print(f"Starting Nikto for {target}...")
     output_file = os.path.join(internal_dir, "nikto.json")
     
-    tuning = config.get("tuning", "4")
+    tuning = config.get("tuning")
     raw_args = config.get("raw_args")
     
     cmd = [
@@ -120,9 +216,44 @@ def run_nikto(target: str, host_dir: str, internal_dir: str, config: Dict[str, A
         "ghcr.io/sullo/nikto:latest",
         "-h", target,
         "-Format", "json",
-        "-o", "/output/nikto.json",
-        "-Tuning", tuning
+        "-o", "/output/nikto.json"
     ]
+    
+    # Tuning (concatenated multi-checkbox values like "1249")
+    if tuning: cmd.extend(["-Tuning", tuning])
+    
+    # Port
+    port = config.get("port")
+    if port: cmd.extend(["-p", port])
+    
+    # SSL
+    if config.get("ssl"): cmd.append("-ssl")
+    if config.get("nossl"): cmd.append("-nossl")
+    
+    # Virtual host
+    vhost = config.get("vhost")
+    if vhost: cmd.extend(["-vhost", vhost])
+    
+    # Evasion techniques (concatenated e.g. "126")
+    evasion = config.get("evasion")
+    if evasion: cmd.extend(["-evasion", evasion])
+    
+    # Display options (concatenated e.g. "12V")
+    display = config.get("display")
+    if display: cmd.extend(["-Display", display])
+    
+    # Behavior flags
+    if config.get("no404"): cmd.append("-no404")
+    if config.get("nolookup"): cmd.append("-nolookup")
+    
+    # Custom header
+    add_header = config.get("add_header")
+    if add_header: cmd.extend(["-Add-header", add_header])
+    
+    # Max scan time
+    maxtime = config.get("maxtime")
+    if maxtime: cmd.extend(["-maxtime", str(maxtime)])
+    
     if raw_args: cmd.extend(raw_args)
 
     try:
@@ -139,7 +270,14 @@ def run_zap(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any
     target_url = target if target.startswith("http") else f"http://{target}"
     
     mode = config.get("mode", "baseline")
-    script = "zap-full-scan.py" if mode == "full" else "zap-baseline.py"
+    raw_args = config.get("raw_args")
+    
+    if mode == "full":
+        script = "zap-full-scan.py"
+    elif mode == "api":
+        script = "zap-api-scan.py"
+    else:
+        script = "zap-baseline.py"
     
     cmd = [
         "docker", "run", "--rm",
@@ -150,17 +288,83 @@ def run_zap(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any
         "-t", target_url,
         "-J", "zap.json"
     ]
+    
+    # Spider duration (minutes)
+    spider_duration = config.get("spider_duration")
+    if spider_duration: cmd.extend(["-m", str(spider_duration)])
+    
+    # AJAX spider
+    if config.get("ajax_spider"): cmd.append("-j")
+    
+    # Alert level
+    alert_level = config.get("alert_level")
+    if alert_level: cmd.extend(["-l", alert_level])
+    
+    # Short output
+    if config.get("short_output"): cmd.append("-s")
+    
+    # Debug
+    if config.get("debug"): cmd.append("-d")
+    
+    # Ignore failures
+    if config.get("ignore_failures"): cmd.append("-I")
+    
+    # ZAP config options
+    zap_options = config.get("zap_options")
+    if zap_options: cmd.extend(["-z", zap_options])
+    
+    if raw_args: cmd.extend(raw_args)
 
-    subprocess.run(cmd, check=False, capture_output=True, text=True)
-    print("ZAP completed.")
-    return output_file
+    # CAPTURE the result
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    
+    # SUCCESS: ZAP returns 0 (no vulns) or 2 (vulnerabilities found)
+    if result.returncode in [0, 2]:
+        print("ZAP completed successfully.")
+        return output_file
+    else:
+        print(f"ZAP FAILED. Return code: {result.returncode}")
+        print(f"STDERR: {result.stderr}")
+        return None
 
 def run_wappalyzer(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting Wappalyzer for {target}...")
     output_file = os.path.join(internal_dir, "wappalyzer.json")
     target_url = target if target.startswith("http") else f"http://{target}"
     
-    cmd = [ "docker", "run", "--rm", "local/wappalyzer", target_url ]
+    cmd = ["docker", "run", "--rm", "local/wappalyzer"]
+    
+    # Recursive crawling
+    if config.get("recursive"): cmd.append("--recursive")
+    
+    # Max URLs
+    max_urls = config.get("max_urls")
+    if max_urls: cmd.extend(["--max-urls", str(max_urls)])
+    
+    # Max depth
+    max_depth = config.get("max_depth")
+    if max_depth: cmd.extend(["--max-depth", str(max_depth)])
+    
+    # Probe mode
+    probe = config.get("probe")
+    if probe and probe != "none": cmd.extend(["--probe", probe])
+    
+    # No scripts
+    if config.get("no_scripts"): cmd.append("--no-scripts")
+    
+    # No redirect
+    if config.get("no_redirect"): cmd.append("--no-redirect")
+    
+    # Custom user agent
+    user_agent = config.get("user_agent")
+    if user_agent: cmd.extend(["--user-agent", user_agent])
+    
+    # Raw args
+    raw_args = config.get("raw_args")
+    if raw_args: cmd.extend(raw_args)
+    
+    cmd.append(target_url)
+    
     result = subprocess.run(cmd, check=False, capture_output=True, text=True)
     try:
         json.loads(result.stdout)
@@ -174,10 +378,17 @@ def run_metasploit(target: str, host_dir: str, internal_dir: str, config: Dict[s
     output_file = os.path.join(internal_dir, "metasploit.txt")
     
     modules = config.get("modules", ["auxiliary/scanner/http/http_version"])
+    threads = config.get("threads")
+    verbose = config.get("verbose")
     
     msf_commands = ""
     for mod in modules:
-        msf_commands += f"use {mod}; set RHOSTS {target}; run; "
+        msf_commands += f"use {mod}; set RHOSTS {target}; "
+        if threads:
+            msf_commands += f"set THREADS {threads}; "
+        if verbose:
+            msf_commands += "set VERBOSE true; "
+        msf_commands += "run; "
     msf_commands += "exit"
 
     cmd = [
@@ -189,6 +400,374 @@ def run_metasploit(target: str, host_dir: str, internal_dir: str, config: Dict[s
     with open(output_file, 'w') as f: f.write(result.stdout)
     print("Metasploit completed.")
     return output_file
+
+def run_whois(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Whois for {target}...")
+    output_file = os.path.join(internal_dir, "whois.txt")
+    
+    # --- BETTER DOMAIN PARSING ---
+    try:
+        # tldextract accurately separates subdomain, domain, and suffix
+        extracted = tldextract.extract(target)
+        
+        if extracted.registered_domain:
+            clean_target = extracted.registered_domain
+        else:
+            clean_target = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+
+    except Exception as e:
+        print(f"TLD Extraction failed: {e}. Falling back to simple split.")
+        clean_target = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+    
+    print(f"Whois target resolved to: {clean_target}")
+    # -----------------------------
+
+    cmd = ["docker", "run", "--rm", "local/whois"]
+    
+    # Raw args before target
+    raw_args = config.get("raw_args")
+    if raw_args: cmd.extend(raw_args)
+    
+    cmd.append(clean_target)
+    
+    try:
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        with open(output_file, 'w') as f:
+            f.write(result.stdout)
+        print("Whois completed.")
+        return output_file
+    except Exception as e:
+        print(f"Whois Failed: {e}")
+        return None
+
+def run_whatweb(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting WhatWeb for {target}...")
+    output_file = os.path.join(internal_dir, "whatweb.json")
+    
+    aggression = config.get("aggression", 1)
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/whatweb",
+        f"--aggression={aggression}",
+        f"--log-json=/output/whatweb.json"
+    ]
+    
+    # Max threads
+    max_threads = config.get("max_threads")
+    if max_threads: cmd.extend(["--max-threads", str(max_threads)])
+    
+    # Follow redirects
+    follow_redirect = config.get("follow_redirect")
+    if follow_redirect: cmd.extend(["--follow-redirect", follow_redirect])
+    
+    # Custom user agent
+    user_agent = config.get("user_agent")
+    if user_agent: cmd.extend(["--user-agent", user_agent])
+    
+    # Plugins
+    plugins = config.get("plugins")
+    if plugins: cmd.extend(["--plugins", plugins])
+    
+    # Grep
+    grep = config.get("grep")
+    if grep: cmd.extend(["--grep", grep])
+    
+    # Proxy
+    proxy = config.get("proxy")
+    if proxy: cmd.extend(["--proxy", proxy])
+    
+    # Verbose
+    if config.get("verbose"): cmd.append("--verbose")
+    
+    if raw_args: cmd.extend(raw_args)
+    
+    cmd.append(target)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("WhatWeb completed.")
+            return output_file
+        else:
+            print("WhatWeb did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"WhatWeb Failed: {e}")
+        return None
+
+def run_dirsearch(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Dirsearch for {target}...")
+    output_file = os.path.join(internal_dir, "dirsearch.json")
+    
+    target_url = target if target.startswith("http") else f"http://{target}"
+    
+    extensions = config.get("extensions", "php,html,js,txt")
+    threads = str(config.get("threads", 50))
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/dirsearch",
+        "-u", target_url,
+        "-e", extensions,
+        "--format=json",
+        "-o", "/output/dirsearch.json",
+        "-t", threads,
+        "--quiet"
+    ]
+    
+    # Exclude extensions
+    exclude_ext = config.get("exclude_extensions")
+    if exclude_ext: cmd.extend(["-X", exclude_ext])
+    
+    # Recursive
+    if config.get("recursive"): cmd.append("-r")
+    
+    # Recursion depth
+    recursion_depth = config.get("recursion_depth")
+    if recursion_depth: cmd.extend(["-R", str(recursion_depth)])
+    
+    # Force extensions
+    if config.get("force_extensions"): cmd.append("-f")
+    
+    # Status code filters
+    exclude_status = config.get("exclude_status")
+    if exclude_status: cmd.extend(["-x", exclude_status])
+    
+    include_status = config.get("include_status")
+    if include_status: cmd.extend(["-i", include_status])
+    
+    # Follow redirects
+    if config.get("follow_redirects"): cmd.append("-b")
+    
+    # Custom wordlist
+    wordlist = config.get("wordlist")
+    if wordlist: cmd.extend(["-w", wordlist])
+    
+    # Custom headers
+    headers = config.get("headers")
+    if headers: cmd.extend(["-H", headers])
+    
+    # User agent
+    user_agent = config.get("user_agent")
+    if user_agent: cmd.extend(["--user-agent", user_agent])
+    
+    # Random agent
+    if config.get("random_agent"): cmd.append("--random-agent")
+    
+    # Cookie
+    cookie = config.get("cookie")
+    if cookie: cmd.extend(["--cookie", cookie])
+    
+    # Timeout
+    timeout = config.get("timeout")
+    if timeout: cmd.extend(["--timeout", str(timeout)])
+    
+    # Prefixes / Suffixes
+    prefixes = config.get("prefixes")
+    if prefixes: cmd.extend(["--prefixes", prefixes])
+    
+    suffixes = config.get("suffixes")
+    if suffixes: cmd.extend(["--suffixes", suffixes])
+    
+    if raw_args: cmd.extend(raw_args)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("Dirsearch completed.")
+            return output_file
+        else:
+            print("Dirsearch did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"Dirsearch Failed: {e}")
+        return None
+
+def run_wfuzz(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Wfuzz for {target}...")
+    output_file = os.path.join(internal_dir, "wfuzz.json")
+    
+    target_url = target
+    if not target.startswith("http"):
+        target_url = f"http://{target}/FUZZ"
+    elif "/FUZZ" not in target_url:
+        target_url = f"{target_url.rstrip('/')}/FUZZ"
+    
+    wordlist = config.get("wordlist", "common.txt")
+    hide_codes = str(config.get("hide_codes", "404"))
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/wfuzz",
+        "-w", f"/wordlists/{wordlist}",
+        "-f", "/output/wfuzz.json,json",
+        "--hc", hide_codes
+    ]
+    
+    # Hide filters
+    hide_lines = config.get("hide_lines")
+    if hide_lines: cmd.extend(["--hl", str(hide_lines)])
+    
+    hide_words = config.get("hide_words")
+    if hide_words: cmd.extend(["--hw", str(hide_words)])
+    
+    hide_chars = config.get("hide_chars")
+    if hide_chars: cmd.extend(["--hh", str(hide_chars)])
+    
+    hide_regex = config.get("hide_regex")
+    if hide_regex: cmd.extend(["--hs", hide_regex])
+    
+    # Show filters
+    show_codes = config.get("show_codes")
+    if show_codes: cmd.extend(["--sc", show_codes])
+    
+    show_lines = config.get("show_lines")
+    if show_lines: cmd.extend(["--sl", str(show_lines)])
+    
+    show_words = config.get("show_words")
+    if show_words: cmd.extend(["--sw", str(show_words)])
+    
+    show_chars = config.get("show_chars")
+    if show_chars: cmd.extend(["--sh", str(show_chars)])
+    
+    show_regex = config.get("show_regex")
+    if show_regex: cmd.extend(["--ss", show_regex])
+    
+    # Advanced filter
+    filter_expr = config.get("filter_expr")
+    if filter_expr: cmd.extend(["--filter", filter_expr])
+    
+    # Performance
+    threads = config.get("threads")
+    if threads: cmd.extend(["-t", str(threads)])
+    
+    # Follow redirects
+    if config.get("follow_redirects"): cmd.append("-L")
+    
+    # Custom headers
+    headers = config.get("headers")
+    if headers: cmd.extend(["-H", headers])
+    
+    # Post data
+    post_data = config.get("post_data")
+    if post_data: cmd.extend(["-d", post_data])
+    
+    # Proxy
+    proxy = config.get("proxy")
+    if proxy: cmd.extend(["-p", proxy])
+    
+    # Verbose
+    if config.get("verbose"): cmd.append("-v")
+    
+    if raw_args: cmd.extend(raw_args)
+    
+    cmd.append(target_url)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("Wfuzz completed.")
+            return output_file
+        else:
+            print("Wfuzz did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"Wfuzz Failed: {e}")
+        return None
+
+def run_dalfox(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
+    print(f"Starting Dalfox for {target}...")
+    output_file = os.path.join(internal_dir, "dalfox.json")
+    
+    target_url = target if target.startswith("http") else f"http://{target}"
+    
+    blind_url = config.get("blind_url")
+    raw_args = config.get("raw_args")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "-v", f"{host_dir}:/output",
+        "local/dalfox",
+        "url", target_url,
+        "--format", "json",
+        "-o", "/output/dalfox.json"
+    ]
+    
+    # Blind XSS URL
+    if blind_url: cmd.extend(["-b", blind_url])
+    
+    # Custom headers
+    headers = config.get("headers")
+    if headers: cmd.extend(["-H", headers])
+    
+    # Cookie
+    cookie = config.get("cookie")
+    if cookie: cmd.extend(["-C", cookie])
+    
+    # HTTP method
+    method = config.get("method")
+    if method: cmd.extend(["-X", method])
+    
+    # POST data
+    data = config.get("data")
+    if data: cmd.extend(["-d", data])
+    
+    # Specific params to test
+    param = config.get("param")
+    if param: cmd.extend(["-p", param])
+    
+    # Delay between requests
+    delay = config.get("delay")
+    if delay: cmd.extend(["--delay", str(delay)])
+    
+    # Workers
+    worker = config.get("worker")
+    if worker: cmd.extend(["--worker", str(worker)])
+    
+    # Timeout
+    timeout = config.get("timeout")
+    if timeout: cmd.extend(["--timeout", str(timeout)])
+    
+    # WAF evasion
+    if config.get("waf_evasion"): cmd.append("--waf-evasion")
+    
+    # Deep DOM XSS
+    if config.get("deep_domxss"): cmd.append("--deep-domxss")
+    
+    # Custom payloads
+    custom_payload = config.get("custom_payload")
+    if custom_payload: cmd.extend(["--custom-payload", custom_payload])
+    
+    # Only PoC
+    if config.get("only_poc"): cmd.append("--only-poc")
+    
+    # Silence mode
+    if config.get("silence"): cmd.append("-S")
+    
+    # Proxy
+    proxy = config.get("proxy")
+    if proxy: cmd.extend(["--proxy", proxy])
+    
+    if raw_args: cmd.extend(raw_args)
+
+    try:
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if os.path.exists(output_file):
+            print("Dalfox completed.")
+            return output_file
+        else:
+            print("Dalfox did not generate output file.")
+            return None
+    except Exception as e:
+        print(f"Dalfox Failed: {e}")
+        return None
 
 def run_openvas(target: str, host_dir: str, internal_dir: str, config: Dict[str, Any]) -> Optional[str]:
     print(f"Starting OpenVAS for {target}...")
@@ -260,7 +839,6 @@ try:
         report_id = reports[0]
         response = gmp.get_report(report_id, report_format_id="a994b278-1f62-11e1-96ac-406186ea4fc5")
         
-        # --- KEY CHANGE: WRITE TO FILE DIRECTLY ---
         with open('/scan/{container_output_filename}', 'w') as f:
             f.write(etree.tostring(response, encoding='unicode'))
 
@@ -283,35 +861,37 @@ except Exception as e:
     
     try:
         result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-        
-        # Check if the file was created in the shared volume
         if os.path.exists(celery_output_path):
             os.rename(celery_output_path, final_output_file)
-            print("OpenVAS scan complete. Report retrieved successfully.")
+            print("OpenVAS scan complete.")
             return final_output_file
         else:
-            print("OpenVAS Failed: No output file found.")
-            print(f"STDERR: {result.stderr}")
+            print(f"OpenVAS Failed: {result.stderr}")
             return None
 
     except Exception as e: 
         print(f"OpenVAS Execution Error: {e}")
         return None
 
-def run_scanner_wrapper(scanner_func, job_id, tool_name, *args):
+def run_scanner_wrapper(scanner_func, job_id, tool_name, *args) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Wrapper to capture both Success Result and Failure Error Message.
+    Returns: (output_file_path, error_message)
+    """
     try:
         update_tool_status(job_id, tool_name, "running")
+        # Runners currently return just a path or None. 
         result = scanner_func(*args)
+        
         if result:
             update_tool_status(job_id, tool_name, "completed")
-            return result
+            return result, None
         else:
             update_tool_status(job_id, tool_name, "failed")
-            return None
+            return None, f"{tool_name} failed (no output generated)"
     except Exception as e:
-        print(f"Error in {tool_name}: {e}")
         update_tool_status(job_id, tool_name, "failed")
-        return None
+        return None, str(e)
 
 @celery_app.task(bind=True)
 def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
@@ -329,6 +909,7 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
         session.commit()
 
         output_paths: Dict[str, str] = {} 
+        tool_errors: Dict[str, str] = {} # New: Capture errors for AI
         normalized_data = {"ports": [], "vulnerabilities": [], "technologies": []}
         vulnerabilities = []
 
@@ -343,7 +924,13 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             "zap": run_zap,
             "wappalyzer": run_wappalyzer,
             "metasploit": run_metasploit,
-            "openvas": run_openvas
+            "openvas": run_openvas,
+            "whois": run_whois,
+            "whatweb": run_whatweb,
+            "dirsearch": run_dirsearch,
+            "wfuzz": run_wfuzz,
+            "dalfox": run_dalfox
+            # Grype removed
         }
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -356,18 +943,49 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             for future in concurrent.futures.as_completed(future_to_scanner):
                 name = future_to_scanner[future]
                 try:
-                    result_path = future.result()
-                    if result_path: output_paths[name] = result_path
+                    res_path, error_msg = future.result()
+                    if res_path: 
+                        output_paths[name] = res_path
+                    if error_msg:
+                        tool_errors[name] = error_msg
                 except Exception as e: 
                     print(f"Scanner {name} exception: {e}")
+                    tool_errors[name] = str(e)
 
         failed_tools = [n for n, s in job.tool_status.items() if s == "failed"]
         all_failed = len(failed_tools) == len(scanners)
         
+        # --- PARSING ---
         if "nmap" in output_paths:
             res = parse_nmap(output_paths["nmap"])
-            normalized_data["host_info"] = res["host_info"]
-            normalized_data["ports"].extend(res["open_ports"])
+            normalized_data["host_info"] = res.get("host_info", {})
+            normalized_data["ports"].extend(res.get("open_ports", []))
+        
+        if "whois" in output_paths:
+            print(f"Parsing Whois data from {output_paths['whois']}")
+            whois_data = parse_whois(output_paths["whois"])
+            if "host_info" not in normalized_data: 
+                normalized_data["host_info"] = {}
+            normalized_data["host_info"].update(whois_data)
+
+        if "whatweb" in output_paths:
+            ww_tech = parse_whatweb(output_paths["whatweb"])
+            if "technologies" not in normalized_data:
+                normalized_data["technologies"] = []
+            normalized_data["technologies"].extend(ww_tech)
+
+        if "dirsearch" in output_paths:
+            ds_vulns = parse_dirsearch(output_paths["dirsearch"])
+            vulnerabilities.extend(ds_vulns)
+
+        if "wfuzz" in output_paths:
+            wfuzz_vulns = parse_wfuzz(output_paths["wfuzz"])
+            vulnerabilities.extend(wfuzz_vulns)
+
+        if "dalfox" in output_paths:
+            df_vulns = parse_dalfox(output_paths["dalfox"])
+            vulnerabilities.extend(df_vulns)
+
         if "nuclei" in output_paths: vulnerabilities.extend(parse_nuclei(output_paths["nuclei"]))
         if "nikto" in output_paths: vulnerabilities.extend(parse_nikto(output_paths["nikto"]))
         if "zap" in output_paths: vulnerabilities.extend(parse_zap(output_paths["zap"]))
@@ -378,6 +996,7 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
         cisa_cache = get_cisa_kev_data()
         enriched_vulns = [enrich_vulnerability(v, cisa_cache) for v in vulnerabilities]
         normalized_data["vulnerabilities"] = enriched_vulns
+        normalized_data["tool_errors"] = tool_errors # Persist errors for AI
 
         job.status = JobStatus.FAILED if all_failed else (JobStatus.PARTIAL_SUCCESS if failed_tools else JobStatus.COMPLETED)
         job.output_files = output_paths
@@ -399,8 +1018,6 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
             session.commit()
 
             if job.notify_email and job.email_recipients:
-                print(f"Sending email to: {job.email_recipients}")
-                
                 pdf_path = os.path.join(internal_dir, f"report_{job_id}.pdf")
                 generate_pdf_report({
                     "job_id": str(job.id), "target": job.target, "created_at": job.created_at, "results": normalized_data
@@ -410,7 +1027,6 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
                 try:
                     generate_graph_image(str(job.id), graph_path)
                 except Exception as e: 
-                    print(f"Graph Gen Error: {e}")
                     graph_path = None
 
                 attachments = [pdf_path]

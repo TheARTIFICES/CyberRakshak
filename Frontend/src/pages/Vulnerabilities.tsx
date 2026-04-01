@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Info, MoreVertical } from "lucide-react";
 import { getVulnerabilities, getDashboardStats } from "../services/api";
 
@@ -37,24 +37,11 @@ const Vulnerabilities = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
-  // FETCH DATA
+  // Fetch dashboard stats once on mount
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchStats = async () => {
       try {
-        setLoading(true);
-        const [vulnData, statsData] = await Promise.all([
-          getVulnerabilities(0, 100), // Fetch first 100
-          getDashboardStats()
-        ]);
-
-        // Map API response to UI model
-        const mappedVulns = vulnData.map((v: any) => ({
-          ...v,
-          category: v.category || "Network", 
-        }));
-
-        setVulnerabilities(mappedVulns);
-        
+        const statsData = await getDashboardStats();
         setStats({
           total: statsData.total_vulnerabilities,
           critical: statsData.critical_findings,
@@ -62,36 +49,47 @@ const Vulnerabilities = () => {
           medium: statsData.medium_findings,
           low: statsData.low_findings,
         });
-
       } catch (error) {
-        console.error("Failed to load vulnerability data", error);
-      } finally {
-        setLoading(false);
+        console.error("Failed to load dashboard stats", error);
       }
     };
-
-    fetchData();
+    fetchStats();
   }, []);
 
-  // Filter vulnerabilities based on search and filters
-  const filteredVulnerabilities = useMemo(() => {
-    return vulnerabilities.filter((vuln) => {
-      const matchesSearch =
-        (vuln.cve || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (vuln.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (vuln.asset || "").toLowerCase().includes(searchQuery.toLowerCase());
+  // Fetch vulnerabilities from backend with filters
+  const fetchVulnerabilities = useCallback(async () => {
+    try {
+      setLoading(true);
+      const filters: Record<string, any> = {};
+      if (severityFilter !== "All") filters.severity = [severityFilter];
+      if (categoryFilter !== "All") filters.tool = [categoryFilter];
+      if (searchQuery.trim()) filters.search = searchQuery.trim();
 
-      const matchesSeverity = severityFilter === "All" || vuln.severity === severityFilter;
-      const matchesCategory = categoryFilter === "All" || vuln.category === categoryFilter;
+      const vulnData = await getVulnerabilities(0, 200, filters);
+      const mappedVulns = vulnData.map((v: any) => ({
+        ...v,
+        category: v.tool || v.category || "Network",
+      }));
+      setVulnerabilities(mappedVulns);
+    } catch (error) {
+      console.error("Failed to load vulnerability data", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchQuery, severityFilter, categoryFilter]);
 
-      return matchesSearch && matchesSeverity && matchesCategory;
-    });
-  }, [searchQuery, severityFilter, categoryFilter, vulnerabilities]);
+  // Debounce search, immediate for dropdowns
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchVulnerabilities();
+    }, searchQuery ? 400 : 0);
+    return () => clearTimeout(timer);
+  }, [fetchVulnerabilities, searchQuery]);
 
   const exportCSV = () => {
     const csv = [
       ["CVE ID", "Vulnerability Name", "Severity", "Category", "Asset"].join(","),
-      ...filteredVulnerabilities.map((v) =>
+      ...vulnerabilities.map((v) =>
         [v.cve, v.title, v.severity, v.category, v.asset].join(",")
       ),
     ].join("\n");
@@ -192,31 +190,60 @@ const Vulnerabilities = () => {
               </div>
               <MoreVertical className="w-4 h-4 text-slate-400 dark:text-slate-500 cursor-pointer" />
             </div>
-            <div className="flex items-end justify-between h-32 px-4">
-              {/* Critical Bar */}
-              <div className="flex flex-col items-center gap-1 flex-1">
-                <div className="text-xs font-bold text-slate-900 dark:text-white mb-1">{stats.critical}</div>
-                <div className="w-6 bg-gradient-to-t from-red-600 to-red-400 rounded-t-[4px]" style={{ height: `${Math.min(100, (stats.critical / (stats.total || 1)) * 300)}%` }}></div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-1">Crit</div>
-              </div>
-              {/* High Bar */}
-              <div className="flex flex-col items-center gap-1 flex-1">
-                <div className="text-xs font-bold text-slate-900 dark:text-white mb-1">{stats.high}</div>
-                <div className="w-6 bg-gradient-to-t from-orange-500 to-orange-300 rounded-t-[4px]" style={{ height: `${Math.min(100, (stats.high / (stats.total || 1)) * 300)}%` }}></div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-1">High</div>
-              </div>
-              {/* Medium Bar */}
-              <div className="flex flex-col items-center gap-1 flex-1">
-                <div className="text-xs font-bold text-slate-900 dark:text-white mb-1">{stats.medium}</div>
-                <div className="w-6 bg-gradient-to-t from-yellow-500 to-yellow-300 rounded-t-[4px]" style={{ height: `${Math.min(100, (stats.medium / (stats.total || 1)) * 300)}%` }}></div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-1">Med</div>
-              </div>
-              {/* Low Bar */}
-              <div className="flex flex-col items-center gap-1 flex-1">
-                <div className="text-xs font-bold text-slate-900 dark:text-white mb-1">{stats.low}</div>
-                <div className="w-6 bg-gradient-to-t from-blue-500 to-blue-300 rounded-t-[4px]" style={{ height: `${Math.min(100, (stats.low / (stats.total || 1)) * 300)}%` }}></div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-1">Low</div>
-              </div>
+            <div className="w-full h-48 relative">
+              <svg viewBox="0 0 500 220" className="w-full h-full">
+                <defs>
+                  <pattern id="grid-vpr" width="500" height="40" patternUnits="userSpaceOnUse">
+                    <line x1="0" y1="40" x2="500" y2="40" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" className="dark:stroke-slate-700" />
+                  </pattern>
+                  <linearGradient id="grad-crit" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor="#dc2626" />
+                    <stop offset="100%" stopColor="#f87171" />
+                  </linearGradient>
+                  <linearGradient id="grad-high" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor="#ea580c" />
+                    <stop offset="100%" stopColor="#fb923c" />
+                  </linearGradient>
+                  <linearGradient id="grad-med" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor="#ca8a04" />
+                    <stop offset="100%" stopColor="#facc15" />
+                  </linearGradient>
+                  <linearGradient id="grad-low" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor="#2563eb" />
+                    <stop offset="100%" stopColor="#60a5fa" />
+                  </linearGradient>
+                </defs>
+                <rect width="500" height="200" fill="url(#grid-vpr)" />
+
+                {/* Critical Bar */}
+                {(() => {
+                  const maxVal = Math.max(stats.critical, stats.high, stats.medium, stats.low, 1);
+                  const barMaxH = 150;
+                  const critH = Math.max(8, (stats.critical / maxVal) * barMaxH);
+                  const highH = Math.max(8, (stats.high / maxVal) * barMaxH);
+                  const medH = Math.max(8, (stats.medium / maxVal) * barMaxH);
+                  const lowH = Math.max(8, (stats.low / maxVal) * barMaxH);
+                  return (
+                    <>
+                      <rect x="60" y={180 - critH} width="30" height={critH} fill="url(#grad-crit)" rx="4" />
+                      <text x="75" y={180 - critH - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{stats.critical}</text>
+                      <text x="75" y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">Critical</text>
+
+                      <rect x="160" y={180 - highH} width="30" height={highH} fill="url(#grad-high)" rx="4" />
+                      <text x="175" y={180 - highH - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{stats.high}</text>
+                      <text x="175" y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">High</text>
+
+                      <rect x="270" y={180 - medH} width="30" height={medH} fill="url(#grad-med)" rx="4" />
+                      <text x="285" y={180 - medH - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{stats.medium}</text>
+                      <text x="285" y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">Medium</text>
+
+                      <rect x="380" y={180 - lowH} width="30" height={lowH} fill="url(#grad-low)" rx="4" />
+                      <text x="395" y={180 - lowH - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{stats.low}</text>
+                      <text x="395" y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">Low</text>
+                    </>
+                  );
+                })()}
+              </svg>
             </div>
           </div>
         </div>
@@ -360,10 +387,14 @@ const Vulnerabilities = () => {
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="px-4 py-2 rounded-lg border bg-slate-50 dark:bg-black/20 border-gray-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
             >
-              <option value="All" className="bg-slate-800">All Categories</option>
-              <option value="Network" className="bg-slate-800">Network</option>
-              <option value="Web" className="bg-slate-800">Web</option>
-              <option value="Database" className="bg-slate-800">Database</option>
+              <option value="All" className="bg-slate-800">All Tools</option>
+              <option value="nmap" className="bg-slate-800">Nmap</option>
+              <option value="nuclei" className="bg-slate-800">Nuclei</option>
+              <option value="zap" className="bg-slate-800">ZAP</option>
+              <option value="openvas" className="bg-slate-800">OpenVAS</option>
+              <option value="nikto" className="bg-slate-800">Nikto</option>
+              <option value="dalfox" className="bg-slate-800">Dalfox</option>
+              <option value="grype" className="bg-slate-800">Grype</option>
             </select>
           </div>
 
@@ -395,14 +426,14 @@ const Vulnerabilities = () => {
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-slate-500 dark:text-slate-400">Loading data...</td>
                 </tr>
-              ) : filteredVulnerabilities.length === 0 ? (
+              ) : vulnerabilities.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-slate-500 dark:text-slate-400">
                     No vulnerabilities found. Try adjusting your filters.
                   </td>
                 </tr>
               ) : (
-                filteredVulnerabilities.map((vuln, index) => (
+                vulnerabilities.map((vuln, index) => (
                   <tr
                     key={index}
                     className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors"

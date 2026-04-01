@@ -11,7 +11,7 @@ const RightDrawer: React.FC<Props> = ({ open, onClose, title, children }) => {
   return (
     <div
       className={`
-        fixed top-0 right-0 h-full w-96
+        fixed top-0 right-0 h-full w-[32rem]
         bg-white dark:bg-slate-900
         shadow-2xl border-l
         border-slate-200 dark:border-slate-700

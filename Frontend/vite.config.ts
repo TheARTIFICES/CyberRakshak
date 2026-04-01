@@ -6,15 +6,23 @@ export default defineConfig({
   plugins: [react()],
   server: {
     allowedHosts: [
-      'frontend',      // Allow internal docker hostname
-      'localhost',     // Allow local access
+      'frontend',
+      'localhost',
       '127.0.0.1',
       'nginx'
     ],
     hmr: {
-      overlay: false, // disable dev overlay that pops up on runtime errors
+      overlay: false,
     },
-    host: '0.0.0.0',   // Ensure it listens on all interfaces
-    port: 5173
+    host: '0.0.0.0',
+    port: 5173,
+    // --- ADD PROXY CONFIG ---
+    proxy: {
+      '/api': {
+        target: 'http://backend:8000', // Docker service name
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   }
 })

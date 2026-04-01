@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_DB: sih_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -56,8 +56,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
-      - GEMINI_API_KEY=AIzaSyBfqflb-Z9ND6aGCzYZBVfzptg9_DHLSuE
-      - GEMINI_MODEL=gemini-2.5-flash
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
     volumes:
       - ./backend:/app
     depends_on:
@@ -145,13 +144,59 @@ services:
     image: nginx:latest
     container_name: sih-nginx
     ports:
-      - "80:80" # Expose Port 80 to the world
+      - "8080:80" # Expose Port 80 to the world via 8080 on the host
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: always
     depends_on:
       - frontend
       - backend
+
+  whois:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.whois
+    image: local/whois
+    container_name: sih-whois-builder
+    entrypoint: ["echo", "Whois image built."]
+    restart: "no"
+
+  whatweb:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.whatweb
+    image: local/whatweb
+    container_name: sih-whatweb-builder
+    entrypoint: ["echo", "WhatWeb image built."]
+    restart: "no"
+
+  dirsearch:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dirsearch
+    image: local/dirsearch
+    container_name: sih-dirsearch-builder
+    entrypoint: ["echo", "Dirsearch image built."]
+    restart: "no"
+
+  wfuzz:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.wfuzz
+    image: local/wfuzz
+    container_name: sih-wfuzz-builder
+    entrypoint: ["echo", "Wfuzz image built."]
+    restart: "no"
+
+  dalfox:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dalfox
+    image: local/dalfox
+    container_name: sih-dalfox-builder
+    entrypoint: ["/app/dalfox", "version"]
+    restart: "no"
+
 
 volumes:
   postgres_data:

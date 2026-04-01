@@ -9,7 +9,7 @@ import Assets from "../pages/Assets";
 import AttackPath from "../pages/AttackPath";
 import ThreatIntel from "../pages/ThreatIntel";
 import Reports from "../pages/Reports";
-import Remediation from "../pages/Remediation";
+
 import ChatAssistant from "../pages/ChatAssistant";
 import Settings from "../pages/Settings";
 import UserProfile from "../pages/UserProfile";
@@ -27,7 +27,7 @@ export const AppRouter = () => {
           <Route path="/attack-path" element={<AttackPath />} />
           <Route path="/threat-intel" element={<ThreatIntel />} />
           <Route path="/reports" element={<Reports />} />
-          <Route path="/remediation" element={<Remediation />} />
+
           <Route path="/assistant" element={<ChatAssistant />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />
