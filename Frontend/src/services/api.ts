@@ -248,6 +248,20 @@ export const getJobHistory = async (skip: number = 0, limit: number = 100): Prom
   return apiCall<JobHistoryResponse[]>(`/jobs?skip=${skip}&limit=${limit}`);
 };
 
+// Active Jobs API (returns running/pending jobs with tool_status)
+export interface ActiveJobResponse {
+  job_id: string;
+  target: string;
+  status: string;
+  created_at: string;
+  scanners_requested: string[];
+  tool_status: Record<string, string>;
+}
+
+export const getActiveJobs = async (): Promise<ActiveJobResponse[]> => {
+  return apiCall<ActiveJobResponse[]>('/jobs/active');
+};
+
 // Report APIs
 export const getReports = async (
   skip: number = 0, 

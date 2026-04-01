@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Search, Filter, Server, Monitor, Shield, AlertTriangle, CheckCircle, HelpCircle, Cloud } from "lucide-react";
 import { getAssets } from "../services/api";
 import AssetDrawer from "../components/assets/AssetDrawer";
@@ -70,13 +70,45 @@ const Assets = () => {
   const countHigh = countCrit4;
   const countCritical = countCrit5;
 
-  // Max values for bar scaling
-  const critMax = Math.max(countCrit1, countCrit2, countCrit3, countCrit4, countCrit5, 1);
-  const detectMax = Math.max(countLow, countMed, countHigh, countCritical, 1);
+  // --- GROUPING LOGIC ---
+  const groupedAssets = useMemo(() => {
+    if (groupBy === "None") return { "All Assets": filteredAssets };
 
-  const getBarHeight = (value: number, max: number) => {
-    return `${Math.max(4, (value / max) * 100)}%`;
-  };
+    const groups: Record<string, any[]> = {};
+    for (const asset of filteredAssets) {
+      let key = "Unknown";
+      if (groupBy === "Criticality") {
+        const labels: Record<number, string> = { 5: "Critical [5]", 4: "High [4]", 3: "Medium [3]", 2: "Low [2]", 1: "Info [1]" };
+        key = labels[asset.criticality] || "Unknown";
+      } else if (groupBy === "OS") {
+        key = asset.os || "Unknown";
+      } else if (groupBy === "Tags") {
+        const tags = asset.tags as string[] | undefined;
+        if (tags && tags.length > 0) {
+          for (const tag of tags) {
+            if (!groups[tag]) groups[tag] = [];
+            groups[tag].push(asset);
+          }
+          continue;
+        } else {
+          key = "Untagged";
+        }
+      }
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(asset);
+    }
+
+    // Sort group keys for Criticality
+    if (groupBy === "Criticality") {
+      const order = ["Critical [5]", "High [4]", "Medium [3]", "Low [2]", "Info [1]"];
+      const sorted: Record<string, any[]> = {};
+      for (const k of order) {
+        if (groups[k]) sorted[k] = groups[k];
+      }
+      return sorted;
+    }
+    return groups;
+  }, [filteredAssets, groupBy]);
 
   // Helper Functions
   const getOsIcon = (os: string) => {
@@ -105,55 +137,78 @@ const Assets = () => {
       {/* TOP ANALYTICS ROW (The Dashboard) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         
-        {/* Card 1: Asset Criticality (The Bar Chart) */}
+        {/* Card 1: Asset Criticality (SVG Bar Chart) */}
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Asset Criticality</h3>
-          <div className="w-full h-40 flex items-end justify-between px-4 gap-2 mt-4">
-            {[countCrit1, countCrit2, countCrit3, countCrit4].map((count, i) => (
-              <div key={i} className="flex flex-col items-center gap-1 w-full group">
-                <div className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-1">{count}</div>
-                <div 
-                  className={`w-full rounded-t-sm transition-all duration-500 ${i < 2 ? "bg-slate-200 dark:bg-slate-700" : "bg-blue-200 dark:bg-blue-900/40"}`} 
-                  style={{ height: getBarHeight(count, critMax) }}
-                ></div>
-                <div className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">[{i + 1}]</div>
-              </div>
-            ))}
-            
-            {/* Bar 5 (Critical) */}
-            <div className="flex flex-col items-center gap-1 w-full group">
-              <div className="text-xs font-bold text-red-600 mb-1">{countCrit5}</div>
-              <div className="w-full bg-red-500 rounded-t-sm shadow-lg shadow-red-200 dark:shadow-none transition-all duration-500" 
-                   style={{ height: getBarHeight(countCrit5, critMax) }}></div>
-              <div className="text-xs font-bold text-white bg-red-500 px-1.5 py-0.5 rounded">[5]</div>
-            </div>
+          <div className="w-full h-44">
+            <svg viewBox="0 0 500 220" className="w-full h-full">
+              <defs>
+                <pattern id="grid-crit" width="500" height="40" patternUnits="userSpaceOnUse">
+                  <line x1="0" y1="40" x2="500" y2="40" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" className="dark:stroke-slate-700" />
+                </pattern>
+                <linearGradient id="gc1" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#94a3b8" /><stop offset="100%" stopColor="#cbd5e1" /></linearGradient>
+                <linearGradient id="gc2" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#64748b" /><stop offset="100%" stopColor="#94a3b8" /></linearGradient>
+                <linearGradient id="gc3" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#93c5fd" /></linearGradient>
+                <linearGradient id="gc4" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#f97316" /><stop offset="100%" stopColor="#fdba74" /></linearGradient>
+                <linearGradient id="gc5" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#dc2626" /><stop offset="100%" stopColor="#f87171" /></linearGradient>
+              </defs>
+              <rect width="500" height="200" fill="url(#grid-crit)" />
+              {(() => {
+                const vals = [countCrit1, countCrit2, countCrit3, countCrit4, countCrit5];
+                const labels = ["[1]", "[2]", "[3]", "[4]", "[5]"];
+                const grads = ["url(#gc1)", "url(#gc2)", "url(#gc3)", "url(#gc4)", "url(#gc5)"];
+                const maxV = Math.max(...vals, 1);
+                const barMaxH = 150;
+                return vals.map((v, i) => {
+                  const h = Math.max(8, (v / maxV) * barMaxH);
+                  const x = 40 + i * 95;
+                  return (
+                    <React.Fragment key={i}>
+                      <rect x={x} y={180 - h} width="30" height={h} fill={grads[i]} rx="4" />
+                      <text x={x + 15} y={180 - h - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{v}</text>
+                      <text x={x + 15} y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">{labels[i]}</text>
+                    </React.Fragment>
+                  );
+                });
+              })()}
+            </svg>
           </div>
         </div>
 
-        {/* Card 2: Detection Score (The Purple Histogram) */}
+        {/* Card 2: Detection Score (SVG Bar Chart) */}
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Detection Score</h3>
-          <div className="w-full h-40 flex items-end justify-between px-8 gap-4 mt-4">
-            <div className="flex flex-col items-center w-full">
-              <div className="text-xs font-bold text-purple-400 dark:text-purple-300 mb-1">{countLow}</div>
-              <div className="w-full bg-purple-200 dark:bg-purple-900/30 rounded-t-sm transition-all duration-500" style={{ height: getBarHeight(countLow, detectMax) }}></div>
-              <span className="text-[10px] uppercase text-slate-400 mt-2">Low</span>
-            </div>
-            <div className="flex flex-col items-center w-full">
-              <div className="text-xs font-bold text-purple-500 dark:text-purple-300 mb-1">{countMed}</div>
-              <div className="w-full bg-purple-300 dark:bg-purple-800/50 rounded-t-sm transition-all duration-500" style={{ height: getBarHeight(countMed, detectMax) }}></div>
-              <span className="text-[10px] uppercase text-slate-400 mt-2">Med</span>
-            </div>
-            <div className="flex flex-col items-center w-full">
-              <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mb-1">{countHigh}</div>
-              <div className="w-full bg-purple-400 dark:bg-purple-600 rounded-t-sm transition-all duration-500" style={{ height: getBarHeight(countHigh, detectMax) }}></div>
-              <span className="text-[10px] uppercase text-slate-400 mt-2">High</span>
-            </div>
-            <div className="flex flex-col items-center w-full">
-              <div className="text-xs font-bold text-purple-700 dark:text-purple-400 mb-1">{countCritical}</div>
-              <div className="w-full bg-purple-600 rounded-t-sm shadow-lg shadow-purple-200 dark:shadow-none transition-all duration-500" style={{ height: getBarHeight(countCritical, detectMax) }}></div>
-              <span className="text-[10px] uppercase text-slate-400 mt-2">Crit</span>
-            </div>
+          <div className="w-full h-44">
+            <svg viewBox="0 0 500 220" className="w-full h-full">
+              <defs>
+                <pattern id="grid-detect" width="500" height="40" patternUnits="userSpaceOnUse">
+                  <line x1="0" y1="40" x2="500" y2="40" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" className="dark:stroke-slate-700" />
+                </pattern>
+                <linearGradient id="gd1" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#c4b5fd" /><stop offset="100%" stopColor="#ddd6fe" /></linearGradient>
+                <linearGradient id="gd2" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#a78bfa" /><stop offset="100%" stopColor="#c4b5fd" /></linearGradient>
+                <linearGradient id="gd3" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#7c3aed" /><stop offset="100%" stopColor="#a78bfa" /></linearGradient>
+                <linearGradient id="gd4" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#6d28d9" /><stop offset="100%" stopColor="#8b5cf6" /></linearGradient>
+              </defs>
+              <rect width="500" height="200" fill="url(#grid-detect)" />
+              {(() => {
+                const vals = [countLow, countMed, countHigh, countCritical];
+                const labels = ["Low", "Medium", "High", "Critical"];
+                const grads = ["url(#gd1)", "url(#gd2)", "url(#gd3)", "url(#gd4)"];
+                const maxV = Math.max(...vals, 1);
+                const barMaxH = 150;
+                return vals.map((v, i) => {
+                  const h = Math.max(8, (v / maxV) * barMaxH);
+                  const x = 55 + i * 110;
+                  return (
+                    <React.Fragment key={i}>
+                      <rect x={x} y={180 - h} width="30" height={h} fill={grads[i]} rx="4" />
+                      <text x={x + 15} y={180 - h - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{v}</text>
+                      <text x={x + 15} y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">{labels[i]}</text>
+                    </React.Fragment>
+                  );
+                });
+              })()}
+            </svg>
           </div>
         </div>
 
@@ -233,57 +288,68 @@ const Assets = () => {
                   <td colSpan={7} className="p-8 text-center text-slate-500 opacity-60">No assets found matching criteria.</td>
                 </tr>
               ) : (
-                filteredAssets.map((asset) => (
-                  <tr key={asset.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 transition">
-                    <td className="p-3">
-                      <div className="flex items-center">
-                        <Server className="w-4 h-4 mr-2 text-slate-500" />
-                        <div>
-                          <div 
-                            className="font-semibold text-blue-600 hover:underline cursor-pointer"
-                            onClick={() => {
-                              setSelectedAsset(asset);
-                              setDrawerOpen(true);
-                            }}
-                          >
-                            {asset.name}
+                Object.entries(groupedAssets).map(([groupName, groupAssets]) => (
+                  <React.Fragment key={groupName}>
+                    {groupBy !== "None" && (
+                      <tr className="bg-slate-100 dark:bg-slate-800/70">
+                        <td colSpan={7} className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          {groupName} <span className="text-slate-400 dark:text-slate-500 font-normal">({groupAssets.length})</span>
+                        </td>
+                      </tr>
+                    )}
+                    {groupAssets.map((asset: any) => (
+                      <tr key={asset.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-800 transition">
+                        <td className="p-3">
+                          <div className="flex items-center">
+                            <Server className="w-4 h-4 mr-2 text-slate-500" />
+                            <div>
+                              <div 
+                                className="font-semibold text-blue-600 hover:underline cursor-pointer"
+                                onClick={() => {
+                                  setSelectedAsset(asset);
+                                  setDrawerOpen(true);
+                                }}
+                              >
+                                {asset.name}
+                              </div>
+                              <div className="text-gray-500 dark:text-slate-400 text-xs">{asset.ip}</div>
+                            </div>
                           </div>
-                          <div className="text-gray-500 dark:text-slate-400 text-xs">{asset.ip}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      {getStatusIndicator(asset.status)}
-                    </td>
-                    <td className="p-3">
-                      <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold text-white rounded ${
-                        asset.criticality === 5 ? "bg-red-500" : 
-                        asset.criticality === 4 ? "bg-orange-500" : 
-                        "bg-yellow-500"
-                      }`}>
-                        {asset.criticality}
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <span className="border border-slate-200 dark:border-slate-600 rounded-full px-2 py-1 text-xs font-medium">
-                        {asset.riskScore}
-                      </span>
-                    </td>
-                    <td className="p-3 flex items-center">
-                      {getOsIcon(asset.os)}
-                      <span className="truncate max-w-[120px]" title={asset.os}>{asset.os}</span>
-                    </td>
-                    <td className="p-3 text-slate-800 dark:text-white">{asset.missingPatches}</td>
-                    <td className="p-3">
-                      <div className="flex flex-wrap gap-1">
-                        {asset.tags && asset.tags.map((tag: string, index: number) => (
-                          <span key={index} className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-xs px-2 py-0.5 rounded">
-                            {tag}
+                        </td>
+                        <td className="p-3">
+                          {getStatusIndicator(asset.status)}
+                        </td>
+                        <td className="p-3">
+                          <div className={`w-6 h-6 flex items-center justify-center text-xs font-bold text-white rounded ${
+                            asset.criticality === 5 ? "bg-red-500" : 
+                            asset.criticality === 4 ? "bg-orange-500" : 
+                            "bg-yellow-500"
+                          }`}>
+                            {asset.criticality}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="border border-slate-200 dark:border-slate-600 rounded-full px-2 py-1 text-xs font-medium">
+                            {asset.riskScore}
                           </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
+                        </td>
+                        <td className="p-3 flex items-center">
+                          {getOsIcon(asset.os)}
+                          <span className="truncate max-w-[120px]" title={asset.os}>{asset.os}</span>
+                        </td>
+                        <td className="p-3 text-slate-800 dark:text-white">{asset.missingPatches}</td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-1">
+                            {asset.tags && asset.tags.map((tag: string, index: number) => (
+                              <span key={index} className="bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-xs px-2 py-0.5 rounded">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

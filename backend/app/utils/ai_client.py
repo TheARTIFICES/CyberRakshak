@@ -28,9 +28,9 @@ async def get_remote_embedding(text: str) -> Optional[List[float]]:
     url = f"{AI_SERVICE_URL.rstrip('/')}/embed"
 
     # 1. Enforce Prefixing Rule
-    # The embedding model requires "query: " prefix for retrieval queries.
-    if not text.startswith("query: "):
-        text = f"query: {text}"
+    # The nomic-embed-text-v1.5 model requires "search_query: " prefix for retrieval queries.
+    if not text.startswith("search_query: "):
+        text = f"search_query: {text}"
     
     payload = {"text": text}
 
@@ -43,7 +43,7 @@ async def get_remote_embedding(text: str) -> Optional[List[float]]:
             
         if response.status_code == 200:
             data = response.json()
-            # Expecting format: {"embedding": [float...], "dim": 1024}
+            # Expecting format: {"embedding": [float...], "dim": 768}
             raw_embedding = data.get("embedding")
             
             if raw_embedding:

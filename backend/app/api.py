@@ -25,26 +25,68 @@ from app.utils.nvd_sync import sync_nvd
 
 # === Configuration Models ===
 class NmapConfig(BaseModel):
+    scan_type: Optional[str] = None           # sS, sT, sU, sN, sF, sX, sA
     ports: Optional[str] = None
-    speed: Literal["T1", "T2", "T3", "T4", "T5"] = "T4"
+    speed: Literal["T0", "T1", "T2", "T3", "T4", "T5"] = "T4"
+    service_detection: Optional[bool] = True
+    os_detection: Optional[bool] = None
+    aggressive: Optional[bool] = None
+    skip_discovery: Optional[bool] = None
+    ping_only: Optional[bool] = None
     script: Optional[str] = None
+    script_args: Optional[str] = None
+    fragment: Optional[bool] = None
+    decoys: Optional[str] = None
+    max_rate: Optional[int] = None
+    min_rate: Optional[int] = None
+    verbosity: Optional[str] = None           # none, v, vv
     raw_args: Optional[List[str]] = None
 
 class NucleiConfig(BaseModel):
     tags: str = "cve"
-    severity: Optional[str] = None
+    exclude_tags: Optional[str] = None
+    severity: Optional[str] = None            # comma-separated from multi-checkbox
+    template_id: Optional[str] = None
+    rate_limit: Optional[int] = None
+    bulk_size: Optional[int] = None
+    concurrency: Optional[int] = None
+    timeout: Optional[int] = None
+    retries: Optional[int] = None
+    headless: Optional[bool] = None
+    new_templates: Optional[bool] = None
+    automatic_scan: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class ZapConfig(BaseModel):
-    mode: Literal["baseline", "full"] = "baseline"
+    mode: Literal["baseline", "full", "api"] = "baseline"
+    spider_duration: Optional[int] = None
+    ajax_spider: Optional[bool] = None
+    alert_level: Optional[str] = None         # PASS, IGNORE, INFO, WARN, FAIL
+    short_output: Optional[bool] = None
+    zap_options: Optional[str] = None
+    ignore_failures: Optional[bool] = None
+    debug: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class NiktoConfig(BaseModel):
-    tuning: Optional[str] = None
+    tuning: Optional[str] = None              # concatenated from multi-checkbox
+    port: Optional[str] = None
+    ssl: Optional[bool] = None
+    nossl: Optional[bool] = None
+    vhost: Optional[str] = None
+    evasion: Optional[str] = None             # concatenated from multi-checkbox
+    display: Optional[str] = None             # concatenated from multi-checkbox
+    no404: Optional[bool] = None
+    nolookup: Optional[bool] = None
+    add_header: Optional[str] = None
+    maxtime: Optional[int] = None
     raw_args: Optional[List[str]] = None
 
 class MetasploitConfig(BaseModel):
     modules: List[str] = ["auxiliary/scanner/http/http_version"]
+    preset: Optional[str] = None
+    threads: Optional[int] = None
+    verbose: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class OpenVASConfig(BaseModel):
@@ -53,6 +95,14 @@ class OpenVASConfig(BaseModel):
 
 class WappalyzerConfig(BaseModel):
     enabled: bool = True
+    recursive: Optional[bool] = None
+    max_urls: Optional[int] = None
+    max_depth: Optional[int] = None
+    probe: Optional[str] = None               # none, basic, full
+    no_scripts: Optional[bool] = None
+    no_redirect: Optional[bool] = None
+    user_agent: Optional[str] = None
+    raw_args: Optional[List[str]] = None
 
 class WhoisConfig(BaseModel):
     enabled: bool = True
@@ -60,20 +110,72 @@ class WhoisConfig(BaseModel):
 
 class WhatWebConfig(BaseModel):
     aggression: int = 1
+    max_threads: Optional[int] = None
+    follow_redirect: Optional[str] = None     # never, http-only, meta-only, same-site, always
+    user_agent: Optional[str] = None
+    plugins: Optional[str] = None
+    grep: Optional[str] = None
+    proxy: Optional[str] = None
+    verbose: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class DirsearchConfig(BaseModel):
     extensions: str = "php,html,js,txt"
+    exclude_extensions: Optional[str] = None
     threads: int = 50
+    recursive: Optional[bool] = None
+    recursion_depth: Optional[int] = None
+    force_extensions: Optional[bool] = None
+    exclude_status: Optional[str] = None
+    include_status: Optional[str] = None
+    follow_redirects: Optional[bool] = None
+    wordlist: Optional[str] = None
+    headers: Optional[str] = None
+    user_agent: Optional[str] = None
+    random_agent: Optional[bool] = None
+    cookie: Optional[str] = None
+    timeout: Optional[int] = None
+    prefixes: Optional[str] = None
+    suffixes: Optional[str] = None
     raw_args: Optional[List[str]] = None
 
 class WfuzzConfig(BaseModel):
     wordlist: str = "common.txt"
     hide_codes: str = "404"
+    hide_lines: Optional[str] = None
+    hide_words: Optional[str] = None
+    hide_chars: Optional[str] = None
+    show_codes: Optional[str] = None
+    show_lines: Optional[str] = None
+    show_words: Optional[str] = None
+    show_chars: Optional[str] = None
+    filter_expr: Optional[str] = None
+    hide_regex: Optional[str] = None
+    show_regex: Optional[str] = None
+    threads: Optional[int] = None
+    follow_redirects: Optional[bool] = None
+    headers: Optional[str] = None
+    post_data: Optional[str] = None
+    proxy: Optional[str] = None
+    verbose: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class DalfoxConfig(BaseModel):
     blind_url: Optional[str] = None
+    headers: Optional[str] = None
+    cookie: Optional[str] = None
+    method: Optional[str] = None              # GET, POST, PUT
+    data: Optional[str] = None
+    param: Optional[str] = None
+    delay: Optional[int] = None
+    worker: Optional[int] = None
+    timeout: Optional[int] = None
+    waf_evasion: Optional[bool] = None
+    deep_domxss: Optional[bool] = None
+    custom_payload: Optional[str] = None
+    only_poc: Optional[bool] = None
+    silence: Optional[bool] = None
+    proxy: Optional[str] = None
     raw_args: Optional[List[str]] = None
 
 class GrypeConfig(BaseModel):
@@ -547,6 +649,35 @@ def get_job_history(
         JobHistoryResponse(
             job_id=job.id, target=job.target, status=job.status,
             created_at=str(job.created_at), scanners_used=job.scanners_requested or []
+        )
+        for job in jobs
+    ]
+
+class ActiveJobResponse(BaseModel):
+    job_id: uuid.UUID
+    target: str
+    status: str
+    created_at: str
+    scanners_requested: List[str]
+    tool_status: Dict[str, str]
+
+@router.get("/jobs/active", response_model=List[ActiveJobResponse])
+def get_active_jobs(
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Returns all pending/running jobs with their per-scanner tool_status."""
+    jobs = session.exec(
+        select(Job)
+        .where(col(Job.status).in_(["pending", "running"]))
+        .order_by(Job.created_at.desc())
+    ).all()
+    return [
+        ActiveJobResponse(
+            job_id=job.id, target=job.target, status=job.status,
+            created_at=str(job.created_at),
+            scanners_requested=job.scanners_requested or [],
+            tool_status=job.tool_status or {}
         )
         for job in jobs
     ]
