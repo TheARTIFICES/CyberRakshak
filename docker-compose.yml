@@ -1,5 +1,12 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
+    logging: *default-logging
     image: postgres:15
     container_name: sih-postgres
     environment:
@@ -18,6 +25,7 @@ services:
       retries: 5
 
   rabbitmq:
+    logging: *default-logging
     image: rabbitmq:3-management
     container_name: sih-rabbitmq
     ports:
@@ -35,6 +43,7 @@ services:
 
   # --- Redis for Caching ---
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     container_name: sih-redis
     ports:
@@ -45,6 +54,7 @@ services:
   # -------------------------
 
   backend:
+    logging: *default-logging
     build:
       context: ./backend  # <--- CHANGED: Point to backend dir
       dockerfile: Dockerfile.api
@@ -71,6 +81,7 @@ services:
     restart: always
 
   celery-worker:
+    logging: *default-logging
     build:
       context: ./backend # <--- CHANGED
       dockerfile: Dockerfile.worker
@@ -94,6 +105,7 @@ services:
     restart: always
 
   frontend:
+    logging: *default-logging
     build:
       context: ./Frontend
       dockerfile: Dockerfile
@@ -108,6 +120,7 @@ services:
       - backend
 
   wappalyzer:
+    logging: *default-logging
     build:
       context: ./backend # <--- CHANGED
       dockerfile: Dockerfile.wappalyzer
@@ -117,6 +130,7 @@ services:
     restart: "no"
 
   gvm-tools:
+    logging: *default-logging
     build:
       context: ./backend # <--- CHANGED
       dockerfile: Dockerfile.gvm-tools
@@ -126,12 +140,14 @@ services:
     restart: "no"
 
   metasploit:
+    logging: *default-logging
     image: metasploitframework/metasploit-framework
     container_name: sih-metasploit-cache
     entrypoint: ["echo", "Metasploit image pulled."]
     restart: "no"
 
   qdrant:
+    logging: *default-logging
     image: qdrant/qdrant:latest
     container_name: sih-qdrant
     ports:
@@ -141,6 +157,7 @@ services:
     restart: always
 
   nginx:
+    logging: *default-logging
     image: nginx:latest
     container_name: sih-nginx
     ports:
@@ -153,6 +170,7 @@ services:
       - backend
 
   whois:
+    logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile.whois
@@ -162,6 +180,7 @@ services:
     restart: "no"
 
   whatweb:
+    logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile.whatweb
@@ -171,6 +190,7 @@ services:
     restart: "no"
 
   dirsearch:
+    logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile.dirsearch
@@ -180,6 +200,7 @@ services:
     restart: "no"
 
   wfuzz:
+    logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile.wfuzz
@@ -189,6 +210,7 @@ services:
     restart: "no"
 
   dalfox:
+    logging: *default-logging
     build:
       context: ./backend
       dockerfile: Dockerfile.dalfox

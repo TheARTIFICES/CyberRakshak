@@ -38,7 +38,7 @@ const ThreatIntel = () => {
           else if (desc.includes("privilege") || desc.includes("escalation")) priv++;
           else web++; // Catch-all for others (often web/xss/injection)
         });
-        setCategoryStats({ rce, priv, web });
+        setCategoryStats({ rce, privEsc: priv, web });
 
       } catch (error) {
         console.error("Failed to fetch threat intel feed:", error);
@@ -171,7 +171,7 @@ const ThreatIntel = () => {
               </div>
               <div className="flex items-center">
                 <div className="w-3 h-3 bg-orange-500 rounded-full mr-2"></div>
-                <span className="text-sm">PrivEsc (~{categoryStats.priv})</span>
+                <span className="text-sm">PrivEsc (~{categoryStats.privEsc})</span>
               </div>
               <div className="flex items-center">
                 <div className="w-3 h-3 bg-yellow-500 rounded-full mr-2"></div>

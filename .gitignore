@@ -201,3 +201,8 @@ backend/rag_backup/*.json
 # Keep the folders with .gitkeep
 !backend/rag_storage/.gitkeep
 !backend/rag_backup/.gitkeep
+
+# Project agent and large archives
+AGENT.md
+SPEC.md
+*.zip

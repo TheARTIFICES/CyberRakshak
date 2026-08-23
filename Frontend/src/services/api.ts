@@ -105,7 +105,8 @@ interface VulnerabilityResponse {
 }
 
 interface JobHistoryResponse {
-  id: string;
+  id?: string;
+  job_id: string;
   target: string;
   status: string;
   created_at: string;
@@ -326,7 +327,7 @@ export async function* streamChatResponse(
 }
 
 export const getThreatIntelSummary = async (): Promise<ThreatIntelSummaryResponse> => {
-  return apiCall<ThreatIntelSummaryResponse>("/threat-intel/summary", "GET");
+  return apiCall<ThreatIntelSummaryResponse>("/threat-intel/summary");
 };
 
 export const getThreatIntelFeed = async (
@@ -336,7 +337,7 @@ export const getThreatIntelFeed = async (
 ): Promise<VulnerabilityMetadata[]> => {
   const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
   serializeFilters(params, filters);
-  return apiCall<VulnerabilityMetadata[]>(`/threat-intel/feed?${params.toString()}`, "GET");
+  return apiCall<VulnerabilityMetadata[]>(`/threat-intel/feed?${params.toString()}`);
 };
 
 export const getReportStats = async (): Promise<ReportStatsResponse> => {
@@ -352,6 +353,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
   return apiCall<Notification[]>('/notifications');
 };
 
-export const markNotificationRead = async (id: string): Promise<void> => {
+export const markNotificationRead = async (_id: string): Promise<void> => {
   return Promise.resolve(); // Placeholder, implement if backend supports it
 };
+

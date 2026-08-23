@@ -19,12 +19,14 @@ const Topbar = () => {
   // Route mapping for dynamic titles
   const routeMapping: Record<string, { title: string; subtitle: string }> = {
     "/": { title: "Command Center", subtitle: "Overview of security posture & active threats." },
+    "/dashboard": { title: "Dashboard", subtitle: "Security overview and analytics." },
     "/scan-console": { title: "Scan Console", subtitle: "Initiate and manage vulnerability scans." },
     "/assets": { title: "Asset Inventory", subtitle: "View and manage all discovered assets." },
     "/vulnerabilities": { title: "Vulnerabilities", subtitle: "Explore and analyze detected risks." },
     "/attack-path": { title: "Attack Path Analysis", subtitle: "Visualize exploit chains and high-risk routes." },
     "/threat-intel": { title: "Threat Intelligence", subtitle: "Real-time feed of global vulnerabilities." },
     "/reports": { title: "Reports", subtitle: "Centralized repository for audits and summaries." },
+    "/assistant": { title: "Chat Assistant", subtitle: "Security overview and analytics." },
     "/audit-logs": { title: "Audit Logs", subtitle: "System activity and user actions." },
     "/settings": { title: "Settings", subtitle: "Platform configuration and preferences." },
     "/profile": { title: "User Profile", subtitle: "Manage your account details and preferences." }
