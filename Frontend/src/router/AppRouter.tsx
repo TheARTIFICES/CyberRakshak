@@ -16,6 +16,9 @@ import ChatAssistant from "../pages/ChatAssistant";
 import Settings from "../pages/Settings";
 import UserProfile from "../pages/UserProfile";
 import GraphSnapshot from "../pages/GraphSnapshot";
+import BoardPortal from "../pages/BoardPortal";
+import ScenarioSimulator from "../pages/ScenarioSimulator";
+import ComplianceCenter from "../pages/ComplianceCenter";
 
 export const AppRouter = () => {
   return (
@@ -37,6 +40,9 @@ export const AppRouter = () => {
           <Route path="/threat-intel" element={<ThreatIntel />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/remediation" element={<Remediation />} />
+          <Route path="/board-portal" element={<BoardPortal />} />
+          <Route path="/simulator" element={<ScenarioSimulator />} />
+          <Route path="/compliance" element={<ComplianceCenter />} />
           <Route path="/assistant" element={<ChatAssistant />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />

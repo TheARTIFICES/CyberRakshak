@@ -11,7 +11,10 @@ import {
   MessageCircle, 
   Activity,
   Zap,
-  ExternalLink
+  ExternalLink,
+  Landmark,
+  FlaskConical,
+  ShieldCheck
 } from "lucide-react";
 
 // Import the logo
@@ -26,6 +29,9 @@ const menu = [
   { path: "/threat-intel", label: "Threat Intelligence", icon: Globe },
   { path: "/reports", label: "Reports", icon: FileText },
   { path: "/remediation", label: "Remediation", icon: Zap },
+  { path: "/board-portal", label: "Board Portal", icon: Landmark },
+  { path: "/simulator", label: "Scenario Simulator", icon: FlaskConical },
+  { path: "/compliance", label: "Compliance Center", icon: ShieldCheck },
   { path: "/assistant", label: "Chat Assistant", icon: MessageCircle },
   { path: "/audit-logs", label: "Audit Logs", icon: Activity },
 ];
