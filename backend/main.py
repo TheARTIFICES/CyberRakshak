@@ -25,12 +25,19 @@ origins = [
     "http://161.118.189.151:5173",
     "http://localhost",
     "http://localhost:5173",
+    "http://cyberrakshak.govt.hu",
+    "https://cyberrakshak.govt.hu",
+    "http://cyberrakshak.govt.hu:5173",
+    "https://cyberrakshak.govt.hu:5173",
+    "http://*.cyberrakshak.govt.hu",
+    "https://*.cyberrakshak.govt.hu",
     "*"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https?://([a-zA-Z0-9-]+\.)*cyberrakshak\.govt\.hu(:[0-9]+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

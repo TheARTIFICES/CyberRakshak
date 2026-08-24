@@ -70,7 +70,7 @@ const AttackPath = () => {
   const getTableData = () => {
     if (!graphData.edges || !graphData.nodes) return [];
 
-    const nodeMap = new Map(graphData.nodes.map((n: any) => [n.id, n]));
+    const nodeMap = new Map<string, any>(graphData.nodes.map((n: any) => [n.id, n]));
 
     return graphData.edges.map((edge: any) => {
       const sourceNode = nodeMap.get(edge.source);
@@ -96,7 +96,7 @@ const AttackPath = () => {
     });
   };
 
-  const tableData = getTableData().filter(row => {
+  const tableData = getTableData().filter((row: any) => {
     const matchesSearch = 
       row.sourceLabel.toLowerCase().includes(searchTerm.toLowerCase()) || 
       row.targetLabel.toLowerCase().includes(searchTerm.toLowerCase());
@@ -121,7 +121,7 @@ const AttackPath = () => {
         {/* ... Metrics ... */}
         <div className="bg-white dark:bg-[#111625]/90 border border-slate-200 dark:border-white/10 rounded-lg p-4">
           <div className="text-2xl font-bold text-red-600 dark:text-red-500">
-            {tableData.filter(r => r.severity === "Critical").length}
+            {tableData.filter((r: any) => r.severity === "Critical").length}
           </div>
           <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Critical Attack Paths</div>
         </div>
@@ -227,7 +227,7 @@ const AttackPath = () => {
                   </td>
                 </tr>
               ) : (
-                tableData.map((row) => (
+                tableData.map((row: any) => (
                   <tr key={row.id} className="border-b border-slate-200 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition">
                     <td 
                       className="p-3 font-mono text-blue-600 dark:text-blue-400 cursor-pointer hover:underline"

@@ -1,5 +1,12 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
+    logging: *default-logging
     image: postgres:15
     container_name: sih-postgres
     environment:
@@ -18,6 +25,7 @@ services:
       retries: 5
 
   rabbitmq:
+    logging: *default-logging
     image: rabbitmq:3-management
     container_name: sih-rabbitmq
     ports:
@@ -31,6 +39,7 @@ services:
       retries: 5
 
   backend:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -52,6 +61,7 @@ services:
     restart: always
 
   celery-worker:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -73,6 +83,7 @@ services:
     restart: always
 
   wappalyzer:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.wappalyzer
@@ -82,6 +93,7 @@ services:
     restart: "no"
 
   gvm-tools:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.gvm-tools
@@ -91,12 +103,14 @@ services:
     restart: "no"
 
   metasploit:
+    logging: *default-logging
     image: metasploitframework/metasploit-framework
     container_name: sih-metasploit-cache
     entrypoint: ["echo", "Metasploit image pulled."]
     restart: "no"
 
   whois:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.whois
