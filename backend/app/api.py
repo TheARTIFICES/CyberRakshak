@@ -952,8 +952,8 @@ class AssetValuationUpdate(BaseModel):
     exposure: Optional[str] = None
     criticality: Optional[str] = None
 
-@router.get("/assets")
-def get_assets(session: Session = Depends(get_session)):
+@router.get("/inventory/assets")
+def get_inventory_assets(session: Session = Depends(get_session)):
     assets = session.exec(select(Asset)).all()
     return assets
 

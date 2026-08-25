@@ -324,7 +324,8 @@ def seed_data():
                 email_recipients=[]
             )
             session.add(job)
-            session.flush() # Get Job ID
+            session.commit() # Commit Job ID to DB first
+            session.refresh(job)
 
             # 3. Add Audit Logs
             log_start = AuditLog(
@@ -351,11 +352,10 @@ def seed_data():
                 timestamp=created_at
             )
             session.add(notif)
+            session.commit()
             
             print(f"[{i+1}/10] Inserted Mock Job for {target}")
 
-        # Commit all changes
-        session.commit()
         print(f"Successfully seeded 10 Hospital Network Mock Scans and {len(cves_processed)} Threat Intel entries.")
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import logging
 
 # Unified single-index RAG engine
 from app.rag import rag
+from update_db import patch_database_schema
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +23,31 @@ app = FastAPI(
 # --- CORS ---
 origins = [
     "http://161.118.189.151",
+    "http://161.118.189.151:80",
     "http://161.118.189.151:5173",
+    "http://161.118.189.151:8080",
+    "https://161.118.189.151",
+    "https://161.118.189.151:8080",
     "http://localhost",
+    "http://localhost:80",
     "http://localhost:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1",
+    "http://127.0.0.1:80",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
     "http://cyberrakshak.govt.hu",
     "https://cyberrakshak.govt.hu",
     "http://cyberrakshak.govt.hu:5173",
-    "https://cyberrakshak.govt.hu:5173"
+    "https://cyberrakshak.govt.hu:5173",
+    "http://cyberrakshak.govt.hu:8080",
+    "https://cyberrakshak.govt.hu:8080"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https?://([a-zA-Z0-9-]+\.)*cyberrakshak\.govt\.hu(:[0-9]+)?",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|161\.118\.189\.151|([a-zA-Z0-9-]+\.)*cyberrakshak\.govt\.hu)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,6 +66,12 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def startup():
+    # 0. Synchronize & patch database schema
+    try:
+        patch_database_schema()
+    except Exception as e:
+        logger.error(f"Failed to auto-patch database schema: {e}")
+
     # 1. Initialize Redis
     redis = aioredis.from_url(settings.REDIS_URL)
     FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")

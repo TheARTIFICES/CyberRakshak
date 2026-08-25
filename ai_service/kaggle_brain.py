@@ -1,38 +1,52 @@
 # ============================================================
 # CYBERRAKSHAK GPU AI MODULE
-# - Embedding + Generation Service
-# - RAG logic lives in backend
+# - Embedding (nomic-embed-text-v1.5) + Generation (WhiteRabbitNeo-v3-7B)
+# - Modern Hugging Face / Xet Accelerated Transfer
+# - Resilient 4-Bit NF4 Quantization with FP16 Fallback
+# - Runtime-Aware Dynamic Memory Budgeting
+# - Pre-Flight Validation Tests & FastAPI / ngrok Serving
 # ============================================================
 
 import os
 import sys
 import gc
+import shutil
 import subprocess
 import time
-import asyncio
+import importlib.metadata
 
 # ============================================================
-# CRITICAL: SET BEFORE TORCH IMPORT
-# Prevents fragmentation-related OOM during model loading
+# STAGE 0: ENVIRONMENT CONFIGURATION BEFORE ANY ML IMPORTS
+# - Prevents CUDA fragmentation-related OOM during model loading
+# - Disables TensorFlow bindings in transformers/safetensors
 # ============================================================
 
 os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["USE_TF"] = "0"
+os.environ["USE_TORCH"] = "1"
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+
+# Set persistent Hugging Face cache path on Kaggle
+HF_CACHE_DIR = "/kaggle/working/huggingface"
+os.environ["HF_HOME"] = HF_CACHE_DIR
 
 # ============================================================
-# HARD MEMORY RESET (GPU + CPU)
+# STAGE 1: SAFE MEMORY & STATE RESET
+# - Cleans previously allocated model instances without purging
+#   the local Hugging Face cache or deleting library modules
 # ============================================================
 
-print("🧹 Performing full memory cleanup (CPU + GPU)...")
+print("=" * 65)
+print("🚀 CyberRakshak GPU AI Module — Initializing")
+print("=" * 65)
+print("🧹 Performing safe memory reset (GPU + CPU)...")
 
-# ───── CPU MEMORY RESET ─────
-
-for name in list(globals().keys()):
-    if any(k in name.lower() for k in [
-        "model", "embed_model", "tokenizer", "pipe", "server"
-    ]):
+# Safely delete only known instance references
+for var_name in ["model", "embed_model", "tokenizer", "pipe", "server", "quant_config"]:
+    if var_name in globals():
         try:
-            del globals()[name]
-        except:
+            del globals()[var_name]
+        except Exception:
             pass
 
 gc.collect()
@@ -44,10 +58,6 @@ try:
 except Exception:
     pass
 
-print("✅ CPU memory cleanup complete")
-
-# ───── GPU MEMORY RESET ─────
-
 try:
     import torch
     if torch.cuda.is_available():
@@ -57,81 +67,132 @@ try:
             torch.cuda.ipc_collect()
         print("✅ GPU memory cleanup complete")
     else:
-        print("ℹ️ No CUDA device detected")
+        print("ℹ️ No active CUDA device found during initial sweep")
 except Exception as e:
-    print("⚠️ GPU cleanup skipped:", e)
+    print(f"⚠️ GPU memory cleanup skipped: {e}")
 
-print("🧹 Memory reset finished\n")
+print("✅ Safe memory reset complete\n")
 
 # ============================================================
-# DEPENDENCY ENSURE
-#
-# IMPORTANT: transformers is pinned to 4.46.3.
-# transformers 5.x rewrote the model loading pipeline
-# (convert_and_load_state_dict_in_model) and broke max_memory
-# enforcement during bitsandbytes fp16 staging — causing OOM
-# on GPU 1 even with a 13GiB cap set. 4.46.3 is the last
-# stable 4.x release where max_memory + bnb works correctly.
+# STAGE 2: MODERNIZE DEPENDENCIES
+# - Uses coherent current compatible Hugging Face stack
+# - Leverages pip dependency resolver without forced conflicting pins
 # ============================================================
 
-print("📦 Pinning transformers to 4.46.3 (5.x breaks max_memory with bitsandbytes)...")
+print("📦 Resolving and installing compatible AI stack...")
 subprocess.check_call([
     sys.executable, "-m", "pip", "install",
-    "transformers==4.46.3",
-    "--quiet", "--force-reinstall", "--no-deps"
-])
-print("✅ transformers 4.46.3 installed")
-
-REQUIRED_PACKAGES = [
+    "--upgrade",
+    "transformers",
+    "huggingface_hub",
+    "hf-xet",
+    "accelerate",
+    "bitsandbytes",
+    "sentence-transformers",
     "fastapi",
     "uvicorn",
-    "nest-asyncio",
     "pyngrok",
-    "torch",
-    "accelerate",
-    "sentence-transformers",
-    "bitsandbytes",
-    "huggingface_hub"
-]
-
-def ensure(pkg):
-    try:
-        __import__(pkg.split("==")[0].replace("-", "_"))
-    except ImportError:
-        print(f"📦 Installing missing package: {pkg}")
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-U", pkg]
-        )
-
-for pkg in REQUIRED_PACKAGES:
-    ensure(pkg)
+    "--quiet"
+])
+print("✅ Package installation resolved successfully")
 
 # ============================================================
-# IMPORTS (SAFE AFTER INSTALL)
+# STAGE 3: SAFE IMPORTS AFTER INSTALLATION
 # ============================================================
 
 import torch
-import nest_asyncio
-nest_asyncio.apply()
+import asyncio
+import logging
+logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
 from fastapi import FastAPI
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from huggingface_hub import login, snapshot_download
 from pyngrok import ngrok
-from huggingface_hub import login
 import uvicorn
 
-# Confirm the transformers version actually loaded
-import transformers
-print(f"✅ transformers version: {transformers.__version__}")
+
+# Report exact loaded versions
+print("\n📦 Loaded Dependency Versions:")
+for pkg in [
+    "transformers",
+    "huggingface_hub",
+    "tokenizers",
+    "accelerate",
+    "bitsandbytes",
+    "hf-xet",
+    "sentence-transformers"
+]:
+    try:
+        ver = importlib.metadata.version(pkg)
+    except Exception:
+        ver = "not installed"
+    print(f"  - {pkg:<22}: {ver}")
 
 # ============================================================
-# HUGGING FACE LOGIN
-# Required for gated models (e.g. WhiteRabbitNeo-v3-7B)
-# Reads HF_TOKEN from Kaggle Secrets → env var fallback
+# STAGE 4: SYSTEM & HARDWARE DIAGNOSTICS
 # ============================================================
 
-print("🔐 Logging in to Hugging Face...")
+print("\n🖥️ System & Hardware Diagnostics:")
+print(f"  - Python Version      : {sys.version.split()[0]}")
+print(f"  - PyTorch Version     : {torch.__version__}")
+print(f"  - CUDA Available      : {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"  - CUDA Version        : {torch.version.cuda}")
+    print(f"  - GPU Count           : {torch.cuda.device_count()}")
+    for i in range(torch.cuda.device_count()):
+        props = torch.cuda.get_device_properties(i)
+        vram_gib = props.total_memory / (1024 ** 3)
+        print(f"    • GPU {i}: {props.name} ({vram_gib:.2f} GiB VRAM)")
+else:
+    print("  - CUDA Device         : None (Running on CPU)")
+
+# System RAM Detection
+try:
+    mem_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    total_ram_gb = mem_bytes / (1024 ** 3)
+except Exception:
+    total_ram_gb = 16.0
+print(f"  - System RAM          : {total_ram_gb:.2f} GB")
+
+# Disk Space Diagnostics
+try:
+    os.makedirs(HF_CACHE_DIR, exist_ok=True)
+    disk_usage = shutil.disk_usage(HF_CACHE_DIR)
+    free_disk_gb = disk_usage.free / (1024 ** 3)
+    total_disk_gb = disk_usage.total / (1024 ** 3)
+    print(f"  - Disk Storage        : {free_disk_gb:.2f} GB free / {total_disk_gb:.2f} GB total ({HF_CACHE_DIR})")
+except Exception as e:
+    print(f"  - Disk Storage        : {HF_CACHE_DIR} (Status unavailable: {e})")
+
+# ============================================================
+# STAGE 5: HUGGING FACE DOWNLOAD ACCELERATION CONFIGURATION
+# - Modern Xet backend configuration
+# - High-performance mode conditionally enabled based on RAM
+# ============================================================
+
+os.environ["HF_XET_NUM_CONCURRENT_RANGE_GETS"] = "32"
+
+if total_ram_gb >= 20.0:
+    os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
+    xet_mode_str = f"High-Performance Mode ENABLED (32 concurrent range gets, System RAM: {total_ram_gb:.1f} GB)"
+else:
+    os.environ["HF_XET_HIGH_PERFORMANCE"] = "0"
+    xet_mode_str = f"Standard Controlled Concurrency (32 concurrent range gets, RAM Budget: {total_ram_gb:.1f} GB)"
+
+print(f"\n🚀 Hugging Face / Xet Configuration:")
+print(f"  - Backend             : Modern Xet Storage Engine")
+print(f"  - HF_HOME             : {os.environ.get('HF_HOME')}")
+print(f"  - Concurrency         : {os.environ.get('HF_XET_NUM_CONCURRENT_RANGE_GETS')} range gets")
+print(f"  - Performance Mode    : {xet_mode_str}")
+
+# ============================================================
+# STAGE 6: HUGGING FACE AUTHENTICATION
+# ============================================================
+
+print("\n🔐 Authenticating with Hugging Face...")
+HF_TOKEN = None
 
 try:
     from kaggle_secrets import UserSecretsClient
@@ -140,68 +201,97 @@ except Exception:
     HF_TOKEN = os.getenv("HF_TOKEN")
 
 if not HF_TOKEN:
-    HF_TOKEN = input("Enter Hugging Face token: ").strip()
+    try:
+        HF_TOKEN = input("Enter Hugging Face token: ").strip()
+    except Exception:
+        pass
 
-login(token=HF_TOKEN)
-print("✅ Hugging Face login successful")
+if HF_TOKEN:
+    login(token=HF_TOKEN)
+    print("✅ Hugging Face authentication successful")
+else:
+    print("⚠️ No Hugging Face token provided. Gated repository downloads may fail.")
 
 # ============================================================
-# CONFIGURATION
+# STAGE 7: MODEL CONSTANTS & EXPLICIT SNAPSHOT DOWNLOAD
 # ============================================================
 
 EMBED_MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
 LLM_MODEL_NAME   = "WhiteRabbitNeo/WhiteRabbitNeo-v3-7B"
+EMBED_DEVICE     = "cpu"
 
-EMBED_DEVICE = "cpu"  # stable + deterministic
+def get_directory_size_gb(directory_path: str) -> float:
+    """Calculates total size in GB for a directory, resolving symlinks safely."""
+    total_bytes = 0
+    visited_inodes = set()
+    for root, _, files in os.walk(directory_path):
+        for f in files:
+            fp = os.path.join(root, f)
+            real_fp = os.path.realpath(fp)
+            if os.path.exists(real_fp):
+                try:
+                    stat_info = os.stat(real_fp)
+                    inode_key = (stat_info.st_dev, stat_info.st_ino)
+                    if inode_key not in visited_inodes:
+                        visited_inodes.add(inode_key)
+                        total_bytes += stat_info.st_size
+                except Exception:
+                    total_bytes += os.path.getsize(real_fp)
+    return total_bytes / (1024 ** 3)
 
-# 13GiB per GPU leaves ~3GB headroom for:
-#   - CUDA context overhead (~1.5GB)
-#   - fp16 staging buffer during bnb quantization
-#   - KV cache during inference
-# CPU acts as overflow for any layers that don't fit
-MAX_MEMORY = {
-    0: "13GiB",
-    1: "13GiB",
-    "cpu": "20GiB"
-}
+print(f"\n📥 Preparing repository snapshot: {LLM_MODEL_NAME}")
+model_path = None
 
-# Minimal system prompt — backend controls the actual persona via user message content
-SYSTEM_PROMPT = """You are a helpful AI assistant. Follow the instructions provided in the user message precisely. Be concise, stop immediately after answering, and do not repeat yourself."""
+# Check if model snapshot is already complete in local cache
+try:
+    model_path = snapshot_download(
+        repo_id=LLM_MODEL_NAME,
+        token=HF_TOKEN,
+        local_files_only=True
+    )
+    print(f"✅ {LLM_MODEL_NAME} already cached; skipping download")
+except Exception:
+    print(f"🚀 Downloading {LLM_MODEL_NAME} via accelerated Xet backend...")
+    start_time = time.time()
+    start_str = time.strftime("%H:%M:%S", time.localtime(start_time))
+    print(f"  - Download started   : {start_str}")
+    
+    model_path = snapshot_download(
+        repo_id=LLM_MODEL_NAME,
+        token=HF_TOKEN,
+        resume_download=True,
+    )
+    
+    end_time = time.time()
+    end_str = time.strftime("%H:%M:%S", time.localtime(end_time))
+    duration_min = (end_time - start_time) / 60.0
+    print(f"  - Download completed : {end_str}")
+    print(f"  - Download duration  : {duration_min:.2f} minutes")
 
+dir_size_gb = get_directory_size_gb(model_path)
+print(f"  - Repository Name    : {LLM_MODEL_NAME}")
+print(f"  - Local Model Path   : {model_path}")
+print(f"  - Model Cache Size   : {dir_size_gb:.2f} GB")
+print(f"✅ Snapshot preparation complete")
 
 # ============================================================
-# SILENCE SPURIOUS LOAD WARNINGS
-#
-# Embedding models may emit unexpected key warnings during load.
-# This is harmless. Suppressing at ERROR level keeps logs clean.
+# STAGE 8: LOAD EMBEDDING MODEL
 # ============================================================
 
-import logging
-logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
-
-# ============================================================
-# LOAD EMBEDDING MODEL
-# ============================================================
-
-print("🔹 Loading embedding model on CPU...")
+print(f"\n🔹 Loading embedding model ({EMBED_MODEL_NAME}) on {EMBED_DEVICE}...")
 
 embed_model = SentenceTransformer(
     EMBED_MODEL_NAME,
     device=EMBED_DEVICE,
-    trust_remote_code=True  # Required for nomic models
+    trust_remote_code=True
 )
 
-print("✅ Embedding model ready")
+print("✅ Embedding model loaded successfully")
 
 def embed_text(text: str):
     """
-    MUST match FAISS build settings:
-    - prefix with 'search_query:' (nomic-embed-text-v1.5 convention)
-    - normalized embeddings
-    - output dim = 768
-
-    NOTE: Backend already adds 'search_query: ' prefix, so we only add
-    if missing to avoid double-prefixing which would break retrieval.
+    Encodes text into a normalized 768-dimensional embedding.
+    Ensures 'search_query: ' prefix is present without double-prefixing.
     """
     if not text.startswith("search_query:"):
         text = "search_query: " + text
@@ -212,38 +302,118 @@ def embed_text(text: str):
     return vec.tolist()
 
 # ============================================================
-# LOAD LLM (FP16, BALANCED SHARDING)
+# STAGE 9: DYNAMIC MULTI-GPU MEMORY BUDGETING
 # ============================================================
 
-print("🔹 Loading LLM in fp16 precision...")
+def build_max_memory_map() -> dict:
+    if not torch.cuda.is_available():
+        return {"cpu": "20GiB"}
+    
+    gpu_count = torch.cuda.device_count()
+    max_memory = {}
+    print(f"\n🖥️ Configuring memory map across {gpu_count} GPU(s):")
+    for i in range(gpu_count):
+        props = torch.cuda.get_device_properties(i)
+        vram_gib = props.total_memory / (1024 ** 3)
+        if gpu_count == 2:
+            # Standard Kaggle 2xT4 (15.9GB each) allocation: 13GiB budget per GPU
+            budget = "13GiB"
+        else:
+            # Single GPU / alternative setup: reserve ~2.5GB for CUDA context & KV cache
+            budget_gb = max(1, int(vram_gib - 2.5))
+            budget = f"{budget_gb}GiB"
+        max_memory[i] = budget
+        print(f"  - GPU {i} ({props.name}, {vram_gib:.2f} GiB total) -> Allocated Budget: {budget}")
+        
+    max_memory["cpu"] = "20GiB"
+    return max_memory
 
-tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL_NAME)
+MAX_MEMORY = build_max_memory_map()
 
-model = AutoModelForCausalLM.from_pretrained(
-    LLM_MODEL_NAME,
-    device_map="auto",
-    max_memory=MAX_MEMORY,
-    torch_dtype=torch.float16,
-    low_cpu_mem_usage=True
-)
+# ============================================================
+# STAGE 10: MODEL LOADING (4-BIT NF4 WITH FP16 FALLBACK)
+# ============================================================
+
+print(f"\n🔹 Loading tokenizer from local snapshot...")
+tokenizer = AutoTokenizer.from_pretrained(model_path)
+if tokenizer.pad_token_id is None:
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+
+model = None
+load_mode = "unknown"
+
+# Attempt 4-bit NF4 Quantization if CUDA is available
+if torch.cuda.is_available():
+    try:
+        print("🔹 Attempting to load LLM with 4-bit NF4 quantization...")
+        quant_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            device_map="auto",
+            max_memory=MAX_MEMORY,
+            quantization_config=quant_config,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+        )
+        load_mode = "4-bit NF4"
+        print("✅ LLM loaded successfully (4-bit NF4)")
+    except Exception as e:
+        print(f"⚠️ 4-bit NF4 loading unsupported or failed ({e}).")
+        print("🔄 Falling back to FP16 precision...")
+        if "model" in globals():
+            del model
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+
+# Fallback to FP16 loading
+if model is None:
+    print("🔹 Loading LLM in FP16 precision...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        device_map="auto",
+        max_memory=MAX_MEMORY,
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=True,
+    )
+    load_mode = "FP16 fallback"
+    print("✅ LLM loaded successfully (FP16 fallback)")
 
 model.eval()
 
+# Post-load diagnostics
+print("\n🧠 Model Load Diagnostics:")
+print(f"  - Model Load Status   : Success")
+print(f"  - Active Precision    : {load_mode}")
+try:
+    param_dtype = next(model.parameters()).dtype
+    print(f"  - Parameter Dtype     : {param_dtype}")
+except Exception:
+    pass
+
 if hasattr(model, "hf_device_map"):
-    print("🧠 LLM device map:")
+    print("  - Device Map Layout   :")
     for k, v in model.hf_device_map.items():
-        print(f"  {k} -> {v}")
+        print(f"    • {k:<25} -> {v}")
 
-print("✅ LLM ready (fp16)")
+if torch.cuda.is_available():
+    print("  - GPU Memory Usage    :")
+    for i in range(torch.cuda.device_count()):
+        alloc_mb = torch.cuda.memory_allocated(i) / (1024 ** 2)
+        res_mb = torch.cuda.memory_reserved(i) / (1024 ** 2)
+        print(f"    • GPU {i}: {alloc_mb:.1f} MB allocated / {res_mb:.1f} MB reserved")
 
 # ============================================================
-# GENERATION
+# STAGE 11: TEXT GENERATION LOGIC
 # ============================================================
 
-# WhiteRabbitNeo-v3-7B does not ship a chat_template in its
-# tokenizer, so apply_chat_template() raises ValueError.
-# The model uses a plain ### Instruction / ### Response format.
-# System prompt is prepended before the instruction block.
+SYSTEM_PROMPT = """You are a helpful AI assistant. Follow the instructions provided in the user message precisely. Be concise, stop immediately after answering, and do not repeat yourself."""
+
 def _build_prompt(system: str, user: str) -> str:
     return (
         f"{system}\n\n"
@@ -251,12 +421,9 @@ def _build_prompt(system: str, user: str) -> str:
         f"### Response:\n"
     )
 
-def generate_text(prompt: str):
+def generate_text(prompt: str) -> str:
     text = _build_prompt(SYSTEM_PROMPT, prompt)
 
-    # Fix pad_token: WRN tokenizer has no pad token set, which causes
-    # the "pad_token_id is None" warning and unstable generation.
-    # Setting it to eos_token is the standard fix for decoder-only models.
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
@@ -267,48 +434,73 @@ def generate_text(prompt: str):
         max_length=4096
     )
 
-    # Move inputs to the device of the first model layer
     device = next(model.parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    # Stop tokens: eos + the literal strings that mark a new prompt cycle.
-    # Without these the model loops back into ### Instruction: endlessly.
-    stop_strings = ["### Instruction:", "### Response:", "<|endoftext|>"]
+    # Stop tokens: EOS and delimiter markers to prevent loop back into prompts
+    stop_strings = ["### Instruction:", "### Response:", "<|endoftext|>", "<|im_end|>"]
     stop_ids = []
     for s in stop_strings:
         ids = tokenizer.encode(s, add_special_tokens=False)
         if ids:
-            stop_ids.append(ids[0])  # stop on first token of each stop string
-    stop_ids = list(set([tokenizer.eos_token_id] + stop_ids))
+            stop_ids.append(ids[0])
+    stop_ids = list(set([tokenizer.eos_token_id] + [sid for sid in stop_ids if sid is not None]))
 
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_new_tokens=512,       # tightened: 2048 was letting loops run forever
+            max_new_tokens=512,
             do_sample=False,
             use_cache=True,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=stop_ids,
-            repetition_penalty=1.1,   # mild penalty to break repetitive loops
+            repetition_penalty=1.1,
         )
 
-    input_length  = inputs["input_ids"].shape[1]
-    output_length = output[0].shape[0]
-    print(f"DEBUG: Input tokens: {input_length}, Output tokens: {output_length}, New tokens: {output_length - input_length}")
-
-    # Decode only the newly generated tokens (excludes the input prompt)
+    input_length = inputs["input_ids"].shape[1]
     generated_tokens = output[0][input_length:]
-    response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
-
-    print(f"DEBUG: Response preview: {response[:200]}")
+    response = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
 
     return response
 
 # ============================================================
-# FASTAPI APP
+# STAGE 12: PRE-FLIGHT VALIDATION TESTS
 # ============================================================
 
-app = FastAPI()
+print("\n🧪 Running Pre-Flight Validation Tests...")
+
+# 1. Embedding Test
+try:
+    print("🔹 Testing embedding inference...")
+    sample_emb = embed_text("test cybersecurity query")
+    if len(sample_emb) != 768:
+        raise ValueError(f"Expected 768 dimensions, received {len(sample_emb)}")
+    print(f"✅ Embedding test passed (dim={len(sample_emb)})")
+except Exception as e:
+    print(f"❌ Embedding test FAILED: {e}")
+    sys.exit(1)
+
+# 2. Generation Test
+try:
+    print("🔹 Testing WhiteRabbitNeo generation inference...")
+    test_query = "Explain what phishing is in one sentence."
+    sample_output = generate_text(test_query)
+    if not sample_output:
+        raise ValueError("Inference returned empty text")
+    print(f"  - Sample Prompt       : {test_query}")
+    print(f"  - Sample Response     : {sample_output[:120]}...")
+    print("✅ WhiteRabbitNeo inference test passed")
+except Exception as e:
+    print(f"❌ WhiteRabbitNeo generation FAILED: {e}")
+    sys.exit(1)
+
+print("✅ All pre-flight tests passed successfully!\n")
+
+# ============================================================
+# STAGE 13: FASTAPI APPLICATION
+# ============================================================
+
+app = FastAPI(title="CyberRakshak GPU AI Module")
 
 @app.get("/")
 def health():
@@ -329,7 +521,7 @@ async def embed(payload: dict):
 
     return {
         "embedding": embedding,
-        "dim": len(embedding)   # MUST be 768
+        "dim": len(embedding)
     }
 
 @app.post("/generate")
@@ -345,11 +537,13 @@ async def generate(payload: dict):
     }
 
 # ============================================================
-# NGROK + SERVER START
+# STAGE 14: NGROK TUNNEL & SERVER LIFECYCLE
 # ============================================================
 
 def start_server():
     import threading
+    import urllib.request
+    import urllib.error
 
     try:
         from kaggle_secrets import UserSecretsClient
@@ -358,41 +552,99 @@ def start_server():
         NGROK_TOKEN = os.getenv("NGROK_TOKEN")
 
     if not NGROK_TOKEN:
-        NGROK_TOKEN = input("Enter ngrok token: ").strip()
+        try:
+            NGROK_TOKEN = input("Enter ngrok token: ").strip()
+        except Exception:
+            pass
 
-    ngrok.set_auth_token(NGROK_TOKEN)
+    if NGROK_TOKEN:
+        ngrok.set_auth_token(NGROK_TOKEN)
 
-    for t in ngrok.get_tunnels():
-        ngrok.disconnect(t.public_url)
+    # Disconnect existing tunnels
+    try:
+        for t in ngrok.get_tunnels():
+            ngrok.disconnect(t.public_url)
+    except Exception:
+        pass
 
     def run_server():
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            config = uvicorn.Config(
+                app=app,
+                host="0.0.0.0",
+                port=8000,
+                log_level="info"
+            )
+            server = uvicorn.Server(config)
+            loop.run_until_complete(server.serve())
+        except Exception as e:
+            print(f"❌ Server thread error: {e}")
 
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    time.sleep(3)
+    # Verify local server is actively accepting requests on 127.0.0.1:8000
+    print("⏳ Waiting for local FastAPI server to bind to 127.0.0.1:8000...")
+    local_ready = False
+    for attempt in range(20):
+        time.sleep(0.5)
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8000/")
+            with urllib.request.urlopen(req, timeout=2) as response:
+                if response.status == 200:
+                    local_ready = True
+                    break
+        except Exception:
+            continue
 
-    url = ngrok.connect(8000)
-    print("\n" + "="*50)
-    print("🚀 AI MODULE LIVE AT:")
-    print(url.public_url)
-    print("="*50)
-    print("➡️  Set AI_SERVICE_URL to this value in backend\n")
+    if not local_ready:
+        print("❌ Error: Local FastAPI server failed to start on 127.0.0.1:8000")
+    else:
+        print("✅ Local FastAPI server verified active on 127.0.0.1:8000")
 
-    return url.public_url
+    public_url = "http://localhost:8000"
+    if NGROK_TOKEN and local_ready:
+        try:
+            # IMPORTANT: Bind explicitly to 127.0.0.1:8000 to prevent ngrok from
+            # resolving to IPv6 [::1]:8000 (which causes ERR_NGROK_8012 connection refused on Kaggle)
+            tunnel = ngrok.connect(addr="127.0.0.1:8000", proto="http")
+            public_url = tunnel.public_url
+
+            # Verify public ngrok tunnel
+            req = urllib.request.Request(
+                f"{public_url.rstrip('/')}/",
+                headers={"ngrok-skip-browser-warning": "true"}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    if response.status == 200:
+                        print("✅ End-to-end public ngrok tunnel verified successfully")
+            except Exception as pe:
+                print(f"⚠️ Public tunnel probe warning: {pe}")
+
+        except Exception as e:
+            print(f"⚠️ Ngrok tunnel creation failed: {e}")
+
+    print("\n" + "=" * 60)
+    print("🌐 CyberRakshak AI Module Live")
+    print(f"🚀 Public URL: {public_url}")
+    print("=" * 60)
+    print("➡️  Set AI_SERVICE_URL to this value in backend environment\n")
+
+    return public_url
 
 # ============================================================
-# MAIN
+# MAIN ENTRYPOINT
 # ============================================================
 
 if __name__ == "__main__":
-    print("🚀 Starting CyberRakshak AI Module...")
     public_url = start_server()
-
-    print("✅ Server running. Press Ctrl+C to stop.")
+    print("✅ Server active and serving requests. Keep this notebook cell running!")
+    print("⚠️ (Stopping or interrupting this cell will terminate the AI module)")
     try:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down...")
+        print("\n🛑 Shutting down CyberRakshak AI Module...")
