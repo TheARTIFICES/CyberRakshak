@@ -135,8 +135,21 @@ interface ChatMessageRequest {
   context_job_ids?: string[];
 }
 
+/**
+ * A single deterministic function the copilot invoked to answer a question.
+ * Populated once the AI/tool-calling work emits it; the frontend renders the
+ * "How this was calculated" trace only when this array is actually present.
+ */
+export interface ToolCall {
+  tool: string;
+  parameters: Record<string, unknown>;
+  result: Record<string, unknown>;
+  duration_ms?: number;
+}
+
 interface ChatMessageResponse {
   response: string;
+  tool_calls?: ToolCall[];
 }
 
 // Helper function for API calls
@@ -537,6 +550,32 @@ export const getRiskForecast = async (): Promise<RiskForecast> => {
   return apiCall<RiskForecast>("/risk/forecast");
 };
 
+// Hierarchical risk provenance — backs the Dashboard's Top Risk Drivers table.
+export interface RiskDriverNode {
+  id: string;
+  parent_id: string | null;
+  /** "org" | "bu" | "asset" | "finding" | "control_gap" */
+  level: string;
+  label: string;
+  cve_id?: string | null;
+  contribution_inr: number;
+  cvss_score?: number | null;
+  epss_score?: number | null;
+}
+
+export interface RiskProvenance {
+  snapshot_id: string;
+  model_version: string;
+  benchmark_version: string;
+  input_hash: string;
+  drivers_count: number;
+  drivers: RiskDriverNode[];
+}
+
+export const getRiskProvenance = async (snapshotId: string): Promise<RiskProvenance> => {
+  return apiCall<RiskProvenance>(`/risk/provenance/${snapshotId}`);
+};
+
 // Scenario Simulation Workbench — reuses the live FAIR engine with overridden parameters
 export interface ScenarioTemplate {
   id: string;
@@ -580,5 +619,90 @@ export const runScenarioSimulation = async (scenarioId: string): Promise<Simulat
     method: "POST",
     body: JSON.stringify({ scenario_id: scenarioId }),
   });
+};
+
+// Enterprise Hierarchy — Board Portal
+export interface Organization {
+  id: string;
+  name: string;
+  sector: string;
+  regulatory_scope?: string[] | null;
+}
+
+export interface BusinessUnit {
+  id: string;
+  org_id: string;
+  name: string;
+  revenue_share: number;
+  criticality: string;
+}
+
+export const getOrganizations = async (): Promise<Organization[]> => {
+  return apiCall<Organization[]>("/org");
+};
+
+export const getBusinessUnits = async (orgId?: string): Promise<BusinessUnit[]> => {
+  const params = orgId ? `?org_id=${orgId}` : "";
+  return apiCall<BusinessUnit[]>(`/bu${params}`);
+};
+
+// Attack Path — financial exposure overlay
+export interface AttackPathHop {
+  from_node: string;
+  to_node: string;
+  transition_probability: number;
+}
+
+export interface AttackPathExposure {
+  path_nodes: string[];
+  hops_count: number;
+  joint_probability: number;
+  terminal_asset: string;
+  terminal_asset_value_inr: number;
+  terminal_sle_inr: number;
+  chained_financial_exposure_inr: number;
+  hop_details: AttackPathHop[];
+}
+
+export const getAttackPathExposure = async (jobId: string): Promise<AttackPathExposure[]> => {
+  const data = await apiCall<{ attack_paths: AttackPathExposure[] }>(`/risk/attack-paths/${jobId}`);
+  return data.attack_paths;
+};
+
+// Telemetry Connectors — trigger-only today (no list/credential-CRUD endpoint exists yet)
+export interface ConnectorSyncResult {
+  status: string;
+  connector: string;
+  findings_ingested: number;
+  controls_updated: number;
+}
+
+export const triggerConnectorSync = async (connectorName: string): Promise<ConnectorSyncResult> => {
+  return apiCall<ConnectorSyncResult>(`/connectors/trigger/${connectorName}`, { method: "POST" });
+};
+
+// Authentication
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export const login = async (username: string, password: string): Promise<TokenResponse> => {
+  const body = new URLSearchParams();
+  body.set("username", username);
+  body.set("password", password);
+
+  const response = await fetch(`${API_BASE_URL}/auth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Incorrect username or password");
+    throw new Error(`Login failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
 };
 

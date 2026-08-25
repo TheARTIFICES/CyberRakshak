@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import type { ComplianceFrameworkScore } from "../../services/api";
 import ScoreRing from "./ScoreRing";
+import Card from "../ui/Card";
 import { formatInrCompact, scoreLabel, scoreTextClass, shortFrameworkCode } from "./format";
 
 interface Props {
@@ -12,8 +13,10 @@ const FrameworkScoreCard = ({ framework, onClick }: Props) => {
   return (
     <button
       onClick={onClick}
-      className="text-left bg-white dark:bg-slate-800 shadow rounded-xl p-5 flex flex-col gap-4 hover:ring-2 hover:ring-cyan-400/60 transition"
+      aria-label={`View gap detail for ${framework.framework_title}`}
+      className="text-left rounded-xl hover:ring-2 hover:ring-cyan-400/60 transition"
     >
+      <Card className="flex flex-col gap-4 h-full">
       <div className="flex items-start justify-between gap-3">
         <div>
           <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-300 mb-1.5">
@@ -49,6 +52,7 @@ const FrameworkScoreCard = ({ framework, onClick }: Props) => {
           All mapped controls satisfied
         </div>
       )}
+      </Card>
     </button>
   );
 };

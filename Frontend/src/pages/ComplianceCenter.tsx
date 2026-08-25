@@ -4,6 +4,7 @@ import KpiCard from "../components/dashboard/KpiCard";
 import CardHeader from "../components/dashboard/CardHeader";
 import FrameworkScoreCard from "../components/compliance/FrameworkScoreCard";
 import FrameworkGapDrawer from "../components/compliance/FrameworkGapDrawer";
+import ComplianceRadar from "../components/compliance/ComplianceRadar";
 import { formatInrCompact } from "../components/compliance/format";
 import { getComplianceEvidencePdf, getComplianceScores, type ComplianceFrameworkScore } from "../services/api";
 
@@ -143,6 +144,8 @@ const ComplianceCenter = () => {
               tooltip="Frameworks scoring under 70% — typically the threshold auditors treat as a materially deficient control environment."
             />
           </section>
+
+          <ComplianceRadar frameworks={frameworks} loading={loading} />
 
           <div>
             <CardHeader

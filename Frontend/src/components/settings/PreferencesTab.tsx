@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { Moon, Sun } from "lucide-react";
+import useTheme from "../../hooks/useTheme";
 
 interface NotificationSettings {
   scan: boolean;
@@ -13,7 +15,7 @@ interface NotificationItem {
 }
 
 const PreferencesTab = () => {
-  const [theme, setTheme] = useState("light");
+  const { isDark, setTheme } = useTheme();
   const [notifications, setNotifications] = useState<NotificationSettings>({
     scan: true,
     critical: true,
@@ -23,43 +25,38 @@ const PreferencesTab = () => {
 
   const [defaultScan, setDefaultScan] = useState("Quick Scan");
 
-  // Theme toggle handler
-  const toggleTheme = (value: string) => {
-    setTheme(value);
-
-    // Apply to document
-    if (value === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  };
-
   return (
     <div className="space-y-10 animate-fade-up">
 
-      {/* THEME */}
+      {/* THEME — canonical home for the theme control, relocated out of the Topbar */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Appearance</h2>
+        <h2 className="text-lg font-semibold mb-1">Appearance</h2>
+        <p className="text-xs text-slate-500 mb-4">Your choice is remembered on this device.</p>
 
         <div className="flex gap-4">
           <button
-            onClick={() => toggleTheme("light")}
-            className={`
-              px-4 py-2 rounded-lg border
-              ${theme === "light" ? "bg-blue-600 text-white" : "bg-slate-200 dark:bg-slate-700"}
-            `}
+            onClick={() => setTheme(false)}
+            aria-pressed={!isDark}
+            className={`px-4 py-2 rounded-lg border inline-flex items-center gap-2 text-sm transition ${
+              !isDark
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-slate-200 dark:bg-slate-700 border-transparent"
+            }`}
           >
+            <Sun className="w-4 h-4" />
             Light Mode
           </button>
 
           <button
-            onClick={() => toggleTheme("dark")}
-            className={`
-              px-4 py-2 rounded-lg border
-              ${theme === "dark" ? "bg-blue-600 text-white" : "bg-slate-200 dark:bg-slate-700"}
-            `}
+            onClick={() => setTheme(true)}
+            aria-pressed={isDark}
+            className={`px-4 py-2 rounded-lg border inline-flex items-center gap-2 text-sm transition ${
+              isDark
+                ? "bg-blue-600 border-blue-600 text-white"
+                : "bg-slate-200 dark:bg-slate-700 border-transparent"
+            }`}
           >
+            <Moon className="w-4 h-4" />
             Dark Mode
           </button>
         </div>

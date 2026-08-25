@@ -2,10 +2,14 @@ import React, { useState } from "react";
 import { Bot, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import TypingIndicator from "./TypingIndicator"; 
+import TypingIndicator from "./TypingIndicator";
+import ToolCallTrace from "./ToolCallTrace";
+import type { ToolCall } from "../../services/api";
 
 interface ChatBubbleAssistantProps {
   text: string;
+  /** Deterministic calls behind this answer; the trace renders only when present. */
+  toolCalls?: ToolCall[];
 }
 
 // Helper Component to handle Code Copy state
@@ -67,7 +71,7 @@ const CodeBlock = ({ inline, className, children, ...props }: any) => {
   );
 };
 
-const ChatBubbleAssistant = ({ text }: ChatBubbleAssistantProps) => {
+const ChatBubbleAssistant = ({ text, toolCalls }: ChatBubbleAssistantProps) => {
   // Determine if we should show the typing animation
   // Shows if text is explicitly "Thinking..." OR just whitespace (heartbeats)
   const isThinking = text === "Thinking..." || text.trim().length === 0;
@@ -124,6 +128,9 @@ const ChatBubbleAssistant = ({ text }: ChatBubbleAssistantProps) => {
             </ReactMarkdown>
           )}
         </div>
+
+        {/* Trust surface — renders only when the response carried real tool calls. */}
+        {!isThinking && <ToolCallTrace toolCalls={toolCalls} />}
       </div>
     </div>
   );

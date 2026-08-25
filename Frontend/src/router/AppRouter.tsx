@@ -20,6 +20,9 @@ import BoardPortal from "../pages/BoardPortal";
 import ScenarioSimulator from "../pages/ScenarioSimulator";
 import ComplianceCenter from "../pages/ComplianceCenter";
 import InvestmentActionBoard from "../pages/InvestmentActionBoard";
+import Login from "../pages/Login";
+import Connectors from "../pages/Connectors";
+import ProtectedRoute from "./ProtectedRoute";
 
 export const AppRouter = () => {
   return (
@@ -31,8 +34,17 @@ export const AppRouter = () => {
           <Route path="/home" element={<Navigate to="/" replace />} />
         </Route>
 
+        {/* Authentication */}
+        <Route path="/login" element={<Login />} />
+
         {/* Operational Security Portal */}
-        <Route element={<AppLayout />}>
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/board-portal" element={<BoardPortal />} />
           <Route path="/scenario-simulator" element={<ScenarioSimulator />} />
@@ -47,6 +59,7 @@ export const AppRouter = () => {
           <Route path="/remediation" element={<Remediation />} />
           <Route path="/assistant" element={<ChatAssistant />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/connectors" element={<Connectors />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<UserProfile />} />
         </Route>

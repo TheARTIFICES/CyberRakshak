@@ -1,15 +1,18 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Bot, Radar, Brain, Zap } from "lucide-react";
+import { Bot, Wallet, Scale, FlaskConical } from "lucide-react";
 import chatAssistantService from "../services/chatAssistant";
 import ChatBubbleAssistant from "../components/chat/ChatBubbleAssistant";
 import ChatInputBar from "../components/chat/ChatInputBar"; // Use new InputBar
 import ScanSelectionModal from "../components/chat/ScanSelectionModal"; // Import Modal
+import type { ToolCall } from "../services/api";
 
 interface Message {
   id: number;
   sender: "user" | "ai";
   content: string;
   timestamp: Date;
+  /** Deterministic calls behind an assistant answer, when the backend supplies them. */
+  toolCalls?: ToolCall[];
 }
 
 const ChatAssistant = () => {
@@ -28,24 +31,30 @@ const ChatAssistant = () => {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Framed around what the advisor is actually for — the financial /
+  // tool-calling layer — rather than generic security-ops verbs. Each card
+  // sends a real, specific question rather than its own title as a prompt.
   const capabilities = [
     {
       id: 1,
-      icon: <Radar className="w-8 h-8 text-blue-500" />,
-      title: "Initiate Intelligent Scan",
-      description: "Discover vulnerabilities across your infrastructure"
+      icon: <Wallet className="w-8 h-8 text-emerald-500" />,
+      title: "Ask About Financial Risk",
+      description: "“Where should we invest ₹1 crore to cut the most Expected Annual Loss?”",
+      prompt: "Where should we invest ₹1 crore to reduce the most Expected Annual Loss?"
     },
     {
       id: 2,
-      icon: <Brain className="w-8 h-8 text-purple-500" />,
-      title: "Analyze Attack Paths",
-      description: "Map potential routes attackers could take"
+      icon: <Scale className="w-8 h-8 text-cyan-500" />,
+      title: "Check Compliance Posture",
+      description: "“Which framework are we weakest on, and what is the penalty exposure?”",
+      prompt: "Which regulatory framework are we weakest on, and what is our penalty exposure?"
     },
     {
       id: 3,
-      icon: <Zap className="w-8 h-8 text-cyan-500" />,
-      title: "Auto-Remediate Criticals",
-      description: "Apply patches and fixes automatically"
+      icon: <FlaskConical className="w-8 h-8 text-purple-500" />,
+      title: "Run a What-If Scenario",
+      description: "“What happens to our EAL if we enforce MFA everywhere?”",
+      prompt: "What happens to our Expected Annual Loss if we enforce MFA across the organization?"
     }
   ];
 
@@ -141,7 +150,7 @@ const ChatAssistant = () => {
                 <div 
                   key={capability.id}
                   className="bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-white/10 hover:border-cyan-500 shadow-sm hover:shadow-xl transition-all p-8 flex flex-col items-center gap-4 cursor-pointer rounded-xl"
-                  onClick={() => processMessage(capability.title)}
+                  onClick={() => processMessage(capability.prompt)}
                 >
                   <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-700">
                     {capability.icon}
@@ -162,7 +171,7 @@ const ChatAssistant = () => {
                   <p>{message.content}</p>
                 </div>
               ) : (
-                <ChatBubbleAssistant text={message.content} />
+                <ChatBubbleAssistant text={message.content} toolCalls={message.toolCalls} />
               )}
             </div>
           ))}
