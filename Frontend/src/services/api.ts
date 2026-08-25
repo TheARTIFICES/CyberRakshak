@@ -135,8 +135,21 @@ interface ChatMessageRequest {
   context_job_ids?: string[];
 }
 
+/**
+ * A single deterministic function the copilot invoked to answer a question.
+ * Populated once the AI/tool-calling work emits it; the frontend renders the
+ * "How this was calculated" trace only when this array is actually present.
+ */
+export interface ToolCall {
+  tool: string;
+  parameters: Record<string, unknown>;
+  result: Record<string, unknown>;
+  duration_ms?: number;
+}
+
 interface ChatMessageResponse {
   response: string;
+  tool_calls?: ToolCall[];
 }
 
 // Helper function for API calls
