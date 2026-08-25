@@ -3,12 +3,13 @@ import IntelCards from "../components/intel/IntelCards";
 import IntelSearchBar from "../components/intel/IntelSearchBar";
 import IntelDrawer from "../components/intel/IntelDrawer";
 import { getThreatIntelFeed } from "../services/api";
-import { Shield, ShieldAlert, Skull, Activity } from "lucide-react";
+import { Shield, ShieldAlert, Skull, Activity, AlertCircle } from "lucide-react";
 
 const ThreatIntel = () => {
   const [feedData, setFeedData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIntel, setSelectedIntel] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   // Filters
   const [severityFilter, setSeverityFilter] = useState("All");
@@ -39,9 +40,11 @@ const ThreatIntel = () => {
           else web++; // Catch-all for others (often web/xss/injection)
         });
         setCategoryStats({ rce, privEsc: priv, web });
+        setLoadError(null);
 
       } catch (error) {
         console.error("Failed to fetch threat intel feed:", error);
+        setLoadError("Could not reach the backend — the threat intel feed may be incomplete.");
       } finally {
         setLoading(false);
       }
@@ -85,7 +88,13 @@ const ThreatIntel = () => {
 
   return (
     <div className="space-y-6">
-      
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
       {/* Summary Cards */}
       <IntelCards />
 

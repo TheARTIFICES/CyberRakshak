@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { getAuditLogs } from "../services/api";
-import { Terminal, Clock, Search } from "lucide-react";
+import { Terminal, Clock, Search, AlertCircle } from "lucide-react";
 
 const AuditLogs = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchLogs = async () => {
     setLoading(true);
     try {
       const data = await getAuditLogs(100, searchTerm); // Pass search term
       setLogs(data);
+      setLoadError(null);
     } catch (error) {
       console.error("Failed to fetch audit logs:", error);
+      setLoadError("Could not reach the backend — the audit log may be incomplete.");
     } finally {
       setLoading(false);
     }
@@ -68,6 +71,11 @@ const AuditLogs = () => {
         <div className="p-4 max-h-[600px] overflow-y-auto space-y-2 custom-scrollbar">
           {loading ? (
             <p className="text-slate-500 animate-pulse">Loading system logs...</p>
+          ) : loadError ? (
+            <p className="text-red-400 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {loadError}
+            </p>
           ) : logs.length === 0 ? (
             <p className="text-slate-600">No logs found matching your search.</p>
           ) : (

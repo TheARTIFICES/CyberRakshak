@@ -13,6 +13,7 @@ import {
 import { TrendingUp, AlertCircle, Target } from "lucide-react";
 import CardHeader from "../dashboard/CardHeader";
 import { getSpendCurve, type SpendCurvePoint } from "../../services/api";
+import { formatInrCompact, formatInrFull } from "../../utils/currency";
 
 /**
  * Capital Allocation / Investment-vs-Risk-Reduction spend curve.
@@ -39,22 +40,6 @@ const BUDGET_PRESETS_INR = [
 ];
 
 const DEFAULT_BUDGET_INR = 2_000_000;
-
-/** Compact Indian numbering (Lakh/Crore) formatter for axis ticks and chips. */
-const formatInrCompact = (value: number): string => {
-  const abs = Math.abs(value);
-  if (abs >= 1_00_00_000) return `₹${(value / 1_00_00_000).toFixed(2)}Cr`;
-  if (abs >= 1_00_000) return `₹${(value / 1_00_000).toFixed(2)}L`;
-  if (abs >= 1_000) return `₹${(value / 1_000).toFixed(1)}K`;
-  return `₹${value.toFixed(0)}`;
-};
-
-const formatInrFull = (value: number): string =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
 
 const formatPct = (value: number): string => `${(value * 100).toFixed(1)}%`;
 

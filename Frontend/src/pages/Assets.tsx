@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, Filter, Server, Monitor, Shield, AlertTriangle, CheckCircle, HelpCircle, Cloud } from "lucide-react";
+import { Search, Filter, Server, Monitor, Shield, AlertTriangle, AlertCircle, CheckCircle, HelpCircle, Cloud } from "lucide-react";
 import { getAssets } from "../services/api";
 import AssetDrawer from "../components/assets/AssetDrawer";
 
@@ -7,6 +7,7 @@ const Assets = () => {
   // State for real data
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [groupBy, setGroupBy] = useState("None");
 
@@ -21,29 +22,27 @@ const Assets = () => {
       try {
         const data = await getAssets(0, 100);
         
-        // Transform API data to match the UI requirements (criticality 1-5, etc.)
+        // Transform API data to match the UI requirements (criticality 1-5 from the real risk tier)
         const transformed = data.map((item: any) => {
           let crit = 1;
-          let score = 200;
-          
-          if (item.risk === "Critical") { crit = 5; score = 850 + Math.floor(Math.random() * 150); }
-          else if (item.risk === "High") { crit = 4; score = 700 + Math.floor(Math.random() * 149); }
-          else if (item.risk === "Medium") { crit = 3; score = 500 + Math.floor(Math.random() * 199); }
-          else if (item.risk === "Low") { crit = 2; score = 300 + Math.floor(Math.random() * 199); }
-          
+          if (item.risk === "Critical") crit = 5;
+          else if (item.risk === "High") crit = 4;
+          else if (item.risk === "Medium") crit = 3;
+          else if (item.risk === "Low") crit = 2;
+
           return {
             ...item,
             criticality: crit,
-            riskScore: score,
-            missingPatches: Math.floor(Math.random() * 10), // Mocked for now if not in API
             status: "Active",
             tags: [item.cloud, item.exposure].filter(Boolean)
           };
         });
         
         setAssets(transformed);
+        setLoadError(null);
       } catch (error) {
         console.error("Failed to load assets", error);
+        setLoadError("Could not reach the backend — asset inventory may be incomplete.");
       } finally {
         setLoading(false);
       }
@@ -132,8 +131,14 @@ const Assets = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#050b14] text-slate-800 dark:text-white p-6">
-      
+    <div className="text-slate-800 dark:text-white">
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 mb-6">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
       {/* TOP ANALYTICS ROW (The Dashboard) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         
@@ -272,7 +277,7 @@ const Assets = () => {
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Asset Name</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Status</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Criticality</th>
-                <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Risk Score</th>
+                <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Risk</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">OS</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Missing Patches</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Tags</th>
@@ -329,15 +334,20 @@ const Assets = () => {
                           </div>
                         </td>
                         <td className="p-3">
-                          <span className="border border-slate-200 dark:border-slate-600 rounded-full px-2 py-1 text-xs font-medium">
-                            {asset.riskScore}
+                          <span className={`border rounded-full px-2 py-1 text-xs font-medium ${
+                            asset.risk === "Critical" ? "border-red-300 text-red-600 dark:border-red-700 dark:text-red-400" :
+                            asset.risk === "High" ? "border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400" :
+                            asset.risk === "Medium" ? "border-yellow-300 text-yellow-600 dark:border-yellow-700 dark:text-yellow-400" :
+                            "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"
+                          }`}>
+                            {asset.risk || "Unknown"}
                           </span>
                         </td>
                         <td className="p-3 flex items-center">
                           {getOsIcon(asset.os)}
                           <span className="truncate max-w-[120px]" title={asset.os}>{asset.os}</span>
                         </td>
-                        <td className="p-3 text-slate-800 dark:text-white">{asset.missingPatches}</td>
+                        <td className="p-3 text-slate-400 dark:text-slate-500" title="Not tracked by any connected scanner yet">—</td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
                             {asset.tags && asset.tags.map((tag: string, index: number) => (

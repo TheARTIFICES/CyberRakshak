@@ -1,19 +1,12 @@
 import { AlertCircle, ArrowRight, Flame, Target } from "lucide-react";
 import type { AttackPathExposure } from "../../services/api";
+import { formatInrCompact } from "../../utils/currency";
 
 interface Props {
   paths: AttackPathExposure[];
   loading: boolean;
   error: string | null;
 }
-
-const formatInrCompact = (value: number): string => {
-  const abs = Math.abs(value);
-  if (abs >= 1_00_00_000) return `₹${(value / 1_00_00_000).toFixed(2)}Cr`;
-  if (abs >= 1_00_000) return `₹${(value / 1_00_000).toFixed(2)}L`;
-  if (abs >= 1_000) return `₹${(value / 1_000).toFixed(1)}K`;
-  return `₹${value.toFixed(0)}`;
-};
 
 /**
  * Chained financial exposure per attack path — GET /risk/attack-paths/{job_id}

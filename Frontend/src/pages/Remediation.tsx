@@ -120,7 +120,7 @@ const Remediation = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#050b14] text-slate-900 dark:text-white p-6">
+    <div className="text-slate-900 dark:text-white">
       {/* Header - REMOVED */}
       <div className="flex justify-end mb-6">
         <button className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg shadow-lg transition flex items-center gap-2">

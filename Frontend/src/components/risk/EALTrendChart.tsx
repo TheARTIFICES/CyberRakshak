@@ -13,6 +13,7 @@ import {
 import { AlertCircle, TrendingDown, TrendingUp, Minus, Flame } from "lucide-react";
 import CardHeader from "../dashboard/CardHeader";
 import { getRiskExposure, getRiskForecast, type RiskExposure, type RiskForecast } from "../../services/api";
+import { formatInrCompact, formatInrFull } from "../../utils/currency";
 
 /**
  * EAL Trend Chart — forward-looking "cost of inaction" trajectory.
@@ -28,21 +29,6 @@ import { getRiskExposure, getRiskForecast, type RiskExposure, type RiskForecast 
  * Self-contained: owns its own card chrome, loading/error state, and data
  * fetching, so it drops into Dashboard.tsx or BoardPortal.tsx with no props.
  */
-
-const formatInrCompact = (value: number): string => {
-  const abs = Math.abs(value);
-  if (abs >= 1_00_00_000) return `₹${(value / 1_00_00_000).toFixed(2)}Cr`;
-  if (abs >= 1_00_000) return `₹${(value / 1_00_000).toFixed(2)}L`;
-  if (abs >= 1_000) return `₹${(value / 1_000).toFixed(1)}K`;
-  return `₹${value.toFixed(0)}`;
-};
-
-const formatInrFull = (value: number): string =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
 
 interface TrendPoint {
   period: string;

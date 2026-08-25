@@ -12,16 +12,9 @@ import AiInsightsPanel from "../components/dashboard/AiInsightsPanel";
 import TotalSolutionsProvided from "../components/dashboard/TotalSolutionsProvided"; // <-- Import
 import SpendCurveChart from "../components/risk/SpendCurveChart";
 import EALTrendChart from "../components/risk/EALTrendChart";
-import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge, Wallet, TrendingUp, ShieldCheck } from "lucide-react";
+import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge, Wallet, TrendingUp, ShieldCheck, AlertCircle } from "lucide-react";
 import { getDashboardStats, getJobHistory, getRiskExposure, type RiskExposure } from "../services/api";
-
-const formatInrCompact = (value: number): string => {
-  const abs = Math.abs(value);
-  if (abs >= 1_00_00_000) return `₹${(value / 1_00_00_000).toFixed(2)}Cr`;
-  if (abs >= 1_00_000) return `₹${(value / 1_00_000).toFixed(2)}L`;
-  if (abs >= 1_000) return `₹${(value / 1_000).toFixed(1)}K`;
-  return `₹${value.toFixed(0)}`;
-};
+import { formatInrCompact } from "../utils/currency";
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -43,6 +36,7 @@ const Dashboard = () => {
   const [recentScans, setRecentScans] = useState<any[]>([]);
   const [exposure, setExposure] = useState<RiskExposure | null>(null);
   const [exposureLoading, setExposureLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // New state for the chart
   const [solutionTrend, setSolutionTrend] = useState<{ day: string; value: number }[]>([]);
@@ -106,6 +100,7 @@ const Dashboard = () => {
 
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
+        setLoadError("Could not reach the backend — some figures below may be stale or unavailable.");
       }
     };
 
@@ -118,6 +113,7 @@ const Dashboard = () => {
       } catch (error) {
         console.error("Failed to fetch risk exposure:", error);
         setExposure(null);
+        setLoadError("Could not reach the backend — some figures below may be stale or unavailable.");
       } finally {
         setExposureLoading(false);
       }
@@ -127,6 +123,13 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
+
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
 
       {/* MONEY-FIRST HERO — the headline is always a rupee figure, never a severity count */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">

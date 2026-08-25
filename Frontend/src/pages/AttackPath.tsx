@@ -140,7 +140,7 @@ const AttackPath = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#050b14] text-slate-900 dark:text-white p-6">
+    <div className="text-slate-900 dark:text-white">
       
       {/* HEADER METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

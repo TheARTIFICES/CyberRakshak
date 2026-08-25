@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Info, MoreVertical } from "lucide-react";
+import { AlertCircle, Info, MoreVertical } from "lucide-react";
 import { getVulnerabilities, getDashboardStats } from "../services/api";
 
 // Interface matching the API response structure
@@ -36,6 +36,7 @@ const Vulnerabilities = () => {
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Fetch dashboard stats once on mount
   useEffect(() => {
@@ -71,8 +72,10 @@ const Vulnerabilities = () => {
         category: v.tool || v.category || "Network",
       }));
       setVulnerabilities(mappedVulns);
+      setLoadError(null);
     } catch (error) {
       console.error("Failed to load vulnerability data", error);
+      setLoadError("Could not reach the backend — vulnerability data may be incomplete.");
     } finally {
       setLoading(false);
     }
@@ -107,7 +110,13 @@ const Vulnerabilities = () => {
   };
 
   return (
-    <div className="space-y-6 bg-slate-50 dark:bg-[#0b1120] min-h-screen p-6">
+    <div className="space-y-6">
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
       {/* Vulnerability Intelligence Overview */}
       <div className="space-y-6 mb-8">
         {/* Row 1: Strategic Stats */}
