@@ -65,11 +65,17 @@ def run_scenario_simulation(
             and not bool(v.get("enrichment", {}).get("is_cisa_kev", False))
         ]
 
+    # Threat-maturation / active-campaign overrides (e.g. delayed remediation, ransomware wave)
+    tef_multiplier = float(overrides.get("tef_multiplier", 1.0))
+    vuln_multiplier = float(overrides.get("vuln_multiplier", 1.0))
+
     # 4. Calculate Projected Scenario FAIR Risk
     projected_res = calculate_asset_fair_risk(
         asset_dict=sim_asset,
         vulnerabilities=sim_vulns,
-        controls=sim_controls
+        controls=sim_controls,
+        tef_multiplier=tef_multiplier,
+        vuln_severity_multiplier=vuln_multiplier
     )
     projected_eal = projected_res["expected_annual_loss_inr"]
     projected_var = projected_res["var_95_inr"]

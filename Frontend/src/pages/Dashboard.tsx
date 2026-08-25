@@ -11,6 +11,7 @@ import UnifiedCyberScore from "../components/dashboard/UnifiedCyberScore";
 import AiInsightsPanel from "../components/dashboard/AiInsightsPanel";
 import TotalSolutionsProvided from "../components/dashboard/TotalSolutionsProvided"; // <-- Import
 import SpendCurveChart from "../components/risk/SpendCurveChart";
+import EALTrendChart from "../components/risk/EALTrendChart";
 import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge } from "lucide-react";
 import { getDashboardStats, getJobHistory } from "../services/api";
 
@@ -165,6 +166,9 @@ const Dashboard = () => {
       </section>
 
       {/* QUANTITATIVE RISK & CAPITAL ALLOCATION SPEND FRONTIER */}
+      <section>
+        <EALTrendChart />
+      </section>
       <section>
         <SpendCurveChart />
       </section>

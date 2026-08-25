@@ -30,6 +30,7 @@ const Topbar = () => {
     "/audit-logs": { title: "Audit Logs", subtitle: "System activity and user actions." },
     "/investment-actions": { title: "Investment Action Board", subtitle: "Capital allocation and closed-loop remediation." },
     "/compliance-center": { title: "Compliance Center", subtitle: "Framework-mapped posture and audit evidence export." },
+    "/scenario-simulator": { title: "Scenario Simulator", subtitle: "What-if financial impact modeling." },
     "/settings": { title: "Settings", subtitle: "Platform configuration and preferences." },
     "/profile": { title: "User Profile", subtitle: "Manage your account details and preferences." }
   };

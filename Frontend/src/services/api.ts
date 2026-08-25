@@ -493,3 +493,92 @@ export const getComplianceEvidencePdf = async (): Promise<Blob> => {
   return response.blob();
 };
 
+// Quantitative Financial Risk — enterprise exposure + forward-looking cost of inaction
+export interface RiskExposure {
+  snapshot_id?: string;
+  expected_annual_loss_inr: number;
+  eal_low_inr: number;
+  eal_high_inr: number;
+  var_95_inr: number;
+  enterprise_risk_score: number;
+  total_asset_value_inr: number;
+  total_findings_count: number;
+  critical_findings_count: number;
+  monitored_assets_count: number;
+  business_units_count: number;
+  created_at?: string;
+  currency: string;
+}
+
+export const getRiskExposure = async (): Promise<RiskExposure> => {
+  return apiCall<RiskExposure>("/risk/exposure");
+};
+
+export type RiskTrendDirection = "increasing" | "decreasing" | "stable";
+
+export interface RiskForecast {
+  current_eal_inr: number;
+  trend_direction: RiskTrendDirection;
+  historical_delta_pct: number;
+  monthly_growth_rate_pct: number;
+  projections: {
+    day_30_eal_inr: number;
+    day_60_eal_inr: number;
+    day_90_eal_inr: number;
+  };
+  cost_of_delay: {
+    day_30_inr: number;
+    day_60_inr: number;
+    day_90_inr: number;
+  };
+}
+
+export const getRiskForecast = async (): Promise<RiskForecast> => {
+  return apiCall<RiskForecast>("/risk/forecast");
+};
+
+// Scenario Simulation Workbench — reuses the live FAIR engine with overridden parameters
+export interface ScenarioTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  default_cost_inr: number;
+  parameter_overrides: Record<string, unknown>;
+}
+
+export const getSimulationScenarios = async (): Promise<ScenarioTemplate[]> => {
+  return apiCall<ScenarioTemplate[]>("/simulation/scenarios");
+};
+
+export interface SimulationRiskState {
+  expected_annual_loss_inr: number;
+  var_95_inr: number;
+  enterprise_risk_score: number;
+}
+
+export interface SimulationImpact {
+  eal_reduction_inr: number;
+  eal_increase_inr: number;
+  risk_reduction_pct: number;
+  implied_cost_inr: number;
+  projected_rosi: number;
+}
+
+export interface SimulationResult {
+  scenario_id: string;
+  scenario_name: string;
+  category: string;
+  baseline: SimulationRiskState;
+  projected: SimulationRiskState;
+  impact: SimulationImpact;
+  simulation_overrides_applied: Record<string, unknown>;
+}
+
+export const runScenarioSimulation = async (scenarioId: string): Promise<SimulationResult> => {
+  return apiCall<SimulationResult>("/simulation/run", {
+    method: "POST",
+    body: JSON.stringify({ scenario_id: scenarioId }),
+  });
+};
+
