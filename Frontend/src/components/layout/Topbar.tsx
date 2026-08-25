@@ -29,6 +29,7 @@ const Topbar = () => {
     "/assistant": { title: "Chat Assistant", subtitle: "Security overview and analytics." },
     "/audit-logs": { title: "Audit Logs", subtitle: "System activity and user actions." },
     "/investment-actions": { title: "Investment Action Board", subtitle: "Capital allocation and closed-loop remediation." },
+    "/compliance-center": { title: "Compliance Center", subtitle: "Framework-mapped posture and audit evidence export." },
     "/settings": { title: "Settings", subtitle: "Platform configuration and preferences." },
     "/profile": { title: "User Profile", subtitle: "Manage your account details and preferences." }
   };

@@ -461,3 +461,35 @@ export const markActionRemediated = async (actionId: string): Promise<Mitigation
   return apiCall<MitigationActionRecord>(`/investment/actions/${actionId}/remediate`, { method: "POST" });
 };
 
+// Compliance Center — framework-mapped posture scoring + audit evidence export
+export interface ComplianceGap {
+  req_id: string;
+  req_name: string;
+  missing_control: string;
+  remediation: string;
+}
+
+export interface ComplianceFrameworkScore {
+  framework_name: string;
+  framework_title: string;
+  category: string;
+  score: number;
+  passed_count: number;
+  total_count: number;
+  gap_count: number;
+  regulatory_penalty_exposure_inr: number;
+  gaps: ComplianceGap[];
+}
+
+export const getComplianceScores = async (): Promise<ComplianceFrameworkScore[]> => {
+  return apiCall<ComplianceFrameworkScore[]>("/compliance/scores");
+};
+
+export const getComplianceEvidencePdf = async (): Promise<Blob> => {
+  const response = await fetch(`${API_BASE_URL}/compliance/export`);
+  if (!response.ok) {
+    throw new Error(`API call failed: ${response.status} ${response.statusText}`);
+  }
+  return response.blob();
+};
+
