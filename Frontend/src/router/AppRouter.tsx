@@ -21,6 +21,7 @@ import ScenarioSimulator from "../pages/ScenarioSimulator";
 import ComplianceCenter from "../pages/ComplianceCenter";
 import InvestmentActionBoard from "../pages/InvestmentActionBoard";
 import Login from "../pages/Login";
+import Connectors from "../pages/Connectors";
 import ProtectedRoute from "./ProtectedRoute";
 
 export const AppRouter = () => {
@@ -58,6 +59,7 @@ export const AppRouter = () => {
           <Route path="/remediation" element={<Remediation />} />
           <Route path="/assistant" element={<ChatAssistant />} />
           <Route path="/audit-logs" element={<AuditLogs />} />
+          <Route path="/connectors" element={<Connectors />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<UserProfile />} />
         </Route>

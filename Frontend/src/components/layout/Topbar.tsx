@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Bell, Sun, Moon, User, LogOut, Settings } from "lucide-react";
+import { Bell, User, LogOut, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getNotifications, markNotificationRead } from "../../services/api";
 import type { Notification } from "../../services/api";
@@ -7,7 +7,6 @@ import type { Notification } from "../../services/api";
 const Topbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -33,6 +32,7 @@ const Topbar = () => {
     "/compliance-center": { title: "Compliance Center", subtitle: "Framework-mapped posture and audit evidence export." },
     "/scenario-simulator": { title: "Scenario Simulator", subtitle: "What-if financial impact modeling." },
     "/board-portal": { title: "Board Portal", subtitle: "Organization-level financial risk and governance rollup." },
+    "/connectors": { title: "Connectors", subtitle: "Telemetry source status and manual sync." },
     "/settings": { title: "Settings", subtitle: "Platform configuration and preferences." },
     "/profile": { title: "User Profile", subtitle: "Manage your account details and preferences." }
   };
@@ -40,11 +40,6 @@ const Topbar = () => {
   const currentRouteInfo = routeMapping[location.pathname] || {
     title: "CyberRakshak",
     subtitle: "Security & governance portal"
-  };
-
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-    document.documentElement.classList.toggle("dark");
   };
 
   // Close dropdowns when clicking outside
@@ -117,14 +112,7 @@ const Topbar = () => {
       {/* Right: Actions */}
       <div className="flex items-center gap-4">
         
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-          className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-300"
-        >
-          {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
+        {/* Theme control lives in Settings → Preferences (relocated out of the Topbar). */}
 
         {/* Notifications Dropdown */}
         <div className="relative" ref={notifRef}>
