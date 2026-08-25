@@ -12,6 +12,7 @@ import AiInsightsPanel from "../components/dashboard/AiInsightsPanel";
 import TotalSolutionsProvided from "../components/dashboard/TotalSolutionsProvided"; // <-- Import
 import SpendCurveChart from "../components/risk/SpendCurveChart";
 import EALTrendChart from "../components/risk/EALTrendChart";
+import TopRiskDrivers from "../components/dashboard/TopRiskDrivers";
 import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge, Wallet, TrendingUp, ShieldCheck, AlertCircle } from "lucide-react";
 import { getDashboardStats, getJobHistory, getRiskExposure, type RiskExposure } from "../services/api";
 import { formatInrCompact } from "../utils/currency";
@@ -160,6 +161,13 @@ const Dashboard = () => {
       <section>
         <EALTrendChart />
       </section>
+
+      {/* Analyst-level breakdown behind the headline EAL — Dashboard-only,
+          deliberately absent from Board Governance. */}
+      <section>
+        <TopRiskDrivers />
+      </section>
+
       <section>
         <SpendCurveChart />
       </section>

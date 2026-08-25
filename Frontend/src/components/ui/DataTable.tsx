@@ -40,12 +40,18 @@ export const Td = ({
   children,
   align = "left",
   className = "",
+  title,
+  colSpan,
 }: {
   children?: ReactNode;
   align?: "left" | "right" | "center";
   className?: string;
+  title?: string;
+  colSpan?: number;
 }) => (
   <td
+    title={title}
+    colSpan={colSpan}
     className={`p-3 ${
       align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"
     } ${className}`}

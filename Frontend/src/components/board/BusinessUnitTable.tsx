@@ -1,5 +1,7 @@
-import { Building2 } from "lucide-react";
+import { AlertTriangle, Building2, Minus } from "lucide-react";
 import type { BusinessUnit } from "../../services/api";
+import EmptyState from "../ui/EmptyState";
+import { TableWrap, Td, Th, Tr } from "../ui/DataTable";
 
 interface Props {
   units: BusinessUnit[];
@@ -13,39 +15,51 @@ const CRITICALITY_CLASSES: Record<string, string> = {
   Low: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
 };
 
+/**
+ * Board Governance's primary above-the-fold content: per-BU risk comparison.
+ *
+ * The EAL / VaR / trend columns are rendered but not populated. GET
+ * /risk/exposure and GET /risk/forecast take no scope/bu_id parameter, so
+ * every business unit would resolve to the identical org-wide figure — a
+ * ranked comparison built on that would be fabricated, not measured. The
+ * columns stay visible (so the intended board read is obvious, and so wiring
+ * them is a one-line change once scope filtering ships) but each cell is an
+ * explicit em-dash rather than a plausible-looking number.
+ */
 const BusinessUnitTable = ({ units, loading }: Props) => {
   if (loading) {
-    return (
-      <div className="h-32 flex items-center justify-center">
-        <p className="text-sm text-slate-500 animate-pulse">Loading business units…</p>
-      </div>
-    );
+    return <p className="text-sm text-slate-500 animate-pulse py-10 text-center">Loading business units…</p>;
   }
 
   if (units.length === 0) {
     return (
-      <div className="h-32 flex flex-col items-center justify-center gap-2 text-center">
-        <Building2 className="w-8 h-8 text-slate-400" />
-        <p className="text-sm text-slate-500">No business units registered for this organization yet.</p>
-      </div>
+      <EmptyState
+        icon={Building2}
+        size="sm"
+        title="No business units registered"
+        description="Register business units to compare risk exposure across the organization."
+      />
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <>
+      <TableWrap>
         <thead>
-          <tr className="text-left bg-slate-100 dark:bg-slate-700">
-            <th className="p-3">Business Unit</th>
-            <th className="p-3">Criticality</th>
-            <th className="p-3 text-right">Revenue Share</th>
+          <tr>
+            <Th>Business Unit</Th>
+            <Th>Criticality</Th>
+            <Th align="right">Revenue Share</Th>
+            <Th align="right">Expected Annual Loss</Th>
+            <Th align="right">Value at Risk (95%)</Th>
+            <Th align="center">Trend</Th>
           </tr>
         </thead>
         <tbody>
           {units.map((bu) => (
-            <tr key={bu.id} className="border-b dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition">
-              <td className="p-3 font-medium text-slate-800 dark:text-slate-100">{bu.name}</td>
-              <td className="p-3">
+            <Tr key={bu.id}>
+              <Td className="font-medium text-slate-800 dark:text-slate-100">{bu.name}</Td>
+              <Td>
                 <span
                   className={`px-2.5 py-1 rounded-full text-xs font-medium ${
                     CRITICALITY_CLASSES[bu.criticality] ?? "bg-slate-100 text-slate-600"
@@ -53,13 +67,33 @@ const BusinessUnitTable = ({ units, loading }: Props) => {
                 >
                   {bu.criticality}
                 </span>
-              </td>
-              <td className="p-3 text-right">{(bu.revenue_share * 100).toFixed(0)}%</td>
-            </tr>
+              </Td>
+              <Td align="right">{(bu.revenue_share * 100).toFixed(0)}%</Td>
+              <Td align="right" className="text-slate-400 dark:text-slate-500" title="Awaiting org/BU scope filtering">
+                —
+              </Td>
+              <Td align="right" className="text-slate-400 dark:text-slate-500" title="Awaiting org/BU scope filtering">
+                —
+              </Td>
+              <Td align="center">
+                <Minus className="w-4 h-4 text-slate-300 dark:text-slate-600 inline" aria-label="No trend data" />
+              </Td>
+            </Tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </TableWrap>
+
+      <div className="flex items-start gap-2 mt-4 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-xs text-amber-800 dark:text-amber-300">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <span>
+          Per-BU financial columns are pending backend scope filtering —{" "}
+          <code className="font-mono">GET /risk/exposure</code> and <code className="font-mono">GET /risk/forecast</code>{" "}
+          accept no <code className="font-mono">scope</code>/<code className="font-mono">bu_id</code> parameter yet, so
+          every unit would show the same org-wide figure. Left blank rather than filled with a number that would read as
+          measured.
+        </span>
+      </div>
+    </>
   );
 };
 

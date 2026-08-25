@@ -537,6 +537,32 @@ export const getRiskForecast = async (): Promise<RiskForecast> => {
   return apiCall<RiskForecast>("/risk/forecast");
 };
 
+// Hierarchical risk provenance — backs the Dashboard's Top Risk Drivers table.
+export interface RiskDriverNode {
+  id: string;
+  parent_id: string | null;
+  /** "org" | "bu" | "asset" | "finding" | "control_gap" */
+  level: string;
+  label: string;
+  cve_id?: string | null;
+  contribution_inr: number;
+  cvss_score?: number | null;
+  epss_score?: number | null;
+}
+
+export interface RiskProvenance {
+  snapshot_id: string;
+  model_version: string;
+  benchmark_version: string;
+  input_hash: string;
+  drivers_count: number;
+  drivers: RiskDriverNode[];
+}
+
+export const getRiskProvenance = async (snapshotId: string): Promise<RiskProvenance> => {
+  return apiCall<RiskProvenance>(`/risk/provenance/${snapshotId}`);
+};
+
 // Scenario Simulation Workbench — reuses the live FAIR engine with overridden parameters
 export interface ScenarioTemplate {
   id: string;
