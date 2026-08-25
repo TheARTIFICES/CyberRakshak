@@ -45,3 +45,7 @@ httpx
 
 # --- RAG Support ---
 faiss-cpu
+
+# --- Testing (backend/tests/) ---
+pytest
+pytest-asyncio
