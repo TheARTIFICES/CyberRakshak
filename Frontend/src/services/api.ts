@@ -357,3 +357,23 @@ export const markNotificationRead = async (_id: string): Promise<void> => {
   return Promise.resolve(); // Placeholder, implement if backend supports it
 };
 
+// Investment Optimization / Capital Allocation
+export interface SpendCurvePoint {
+  budget_allocated_inr: number;
+  actual_spend_inr: number;
+  loss_reduction_inr: number;
+  overall_rosi: number;
+  marginal_rosi: number;
+  actions_count: number;
+}
+
+export interface SpendCurveResponse {
+  curve_points: SpendCurvePoint[];
+  knee_point: SpendCurvePoint | null;
+}
+
+export const getSpendCurve = async (maxBudgetInr: number = 2000000.0): Promise<SpendCurveResponse> => {
+  const params = new URLSearchParams({ max_budget_inr: maxBudgetInr.toString() });
+  return apiCall<SpendCurveResponse>(`/investment/pareto?${params.toString()}`);
+};
+

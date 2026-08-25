@@ -206,4 +206,3 @@ backend/rag_backup/*.json
 AGENT.md
 SPEC.md
 *.zip
-Frontend/
