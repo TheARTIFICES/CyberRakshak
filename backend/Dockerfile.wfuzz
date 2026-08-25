@@ -1,0 +1,22 @@
+FROM python:3.9-slim
+
+# Install system dependencies (pycurl requires libcurl)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install wfuzz
+RUN pip install --no-cache-dir wfuzz
+
+# Create directory for wordlists and download SecLists common.txt
+WORKDIR /wordlists
+RUN wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt -O common.txt
+
+# Set working directory back to app
+WORKDIR /app
+
+# Set the entrypoint
+ENTRYPOINT ["wfuzz"]

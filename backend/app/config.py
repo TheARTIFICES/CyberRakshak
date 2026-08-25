@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     MAIL_PORT: int = int(os.getenv("MAIL_PORT", 587))
     MAIL_SERVER: str = os.getenv("MAIL_SERVER", "smtp.gmail.com")
     MAIL_FROM_NAME: str = "CYRA from CyberRakshak"
+    ALIENVAULT_API_KEY: str = os.getenv("ALIENVAULT_API_KEY", "f0bcbec1ee4e\ce0b15a4693950b2932a889fd45f37b3fbb9b0221f22bd8a7462")
 
     # --- SECURITY CONFIG ---
     SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
@@ -31,6 +32,11 @@ class Settings(BaseSettings):
     
     # --- DEV MODE SWITCH ---
     # If True, the API will assume you are "admin" even without a token.
-    AUTH_DISABLED: bool = True 
+    AUTH_DISABLED: bool = True
+
+    # --- RAG CONFIGURATION ---
+    # Path to RAG storage directory (contains cve_index.faiss + metadata_shard.jsonl)
+    RAG_STORAGE_PATH: str = os.getenv("RAG_STORAGE_PATH", "rag_storage/")
 
 settings = Settings()
+

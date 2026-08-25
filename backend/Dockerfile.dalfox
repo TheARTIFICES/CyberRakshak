@@ -1,0 +1,5 @@
+FROM hahwul/dalfox:latest
+
+# The official image usually sets the entrypoint to dalfox
+# We ensure it's available for our runner
+ENTRYPOINT ["/app/dalfox"]

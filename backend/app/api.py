@@ -21,33 +21,72 @@ import asyncio
 from datetime import datetime
 from app.utils.exploitdb import sync_exploitdb
 from app.utils.cisa_sync import sync_cisa_kev
-
-
-# --- FIX: Updated Import ---
 from app.utils.nvd_sync import sync_nvd 
 
 # === Configuration Models ===
 class NmapConfig(BaseModel):
+    scan_type: Optional[str] = None           # sS, sT, sU, sN, sF, sX, sA
     ports: Optional[str] = None
-    speed: Literal["T1", "T2", "T3", "T4", "T5"] = "T4"
+    speed: Literal["T0", "T1", "T2", "T3", "T4", "T5"] = "T4"
+    service_detection: Optional[bool] = True
+    os_detection: Optional[bool] = None
+    aggressive: Optional[bool] = None
+    skip_discovery: Optional[bool] = None
+    ping_only: Optional[bool] = None
     script: Optional[str] = None
+    script_args: Optional[str] = None
+    fragment: Optional[bool] = None
+    decoys: Optional[str] = None
+    max_rate: Optional[int] = None
+    min_rate: Optional[int] = None
+    verbosity: Optional[str] = None           # none, v, vv
     raw_args: Optional[List[str]] = None
 
 class NucleiConfig(BaseModel):
     tags: str = "cve"
-    severity: Optional[str] = None
+    exclude_tags: Optional[str] = None
+    severity: Optional[str] = None            # comma-separated from multi-checkbox
+    template_id: Optional[str] = None
+    rate_limit: Optional[int] = None
+    bulk_size: Optional[int] = None
+    concurrency: Optional[int] = None
+    timeout: Optional[int] = None
+    retries: Optional[int] = None
+    headless: Optional[bool] = None
+    new_templates: Optional[bool] = None
+    automatic_scan: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class ZapConfig(BaseModel):
-    mode: Literal["baseline", "full"] = "baseline"
+    mode: Literal["baseline", "full", "api"] = "baseline"
+    spider_duration: Optional[int] = None
+    ajax_spider: Optional[bool] = None
+    alert_level: Optional[str] = None         # PASS, IGNORE, INFO, WARN, FAIL
+    short_output: Optional[bool] = None
+    zap_options: Optional[str] = None
+    ignore_failures: Optional[bool] = None
+    debug: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class NiktoConfig(BaseModel):
-    tuning: Optional[str] = None
+    tuning: Optional[str] = None              # concatenated from multi-checkbox
+    port: Optional[str] = None
+    ssl: Optional[bool] = None
+    nossl: Optional[bool] = None
+    vhost: Optional[str] = None
+    evasion: Optional[str] = None             # concatenated from multi-checkbox
+    display: Optional[str] = None             # concatenated from multi-checkbox
+    no404: Optional[bool] = None
+    nolookup: Optional[bool] = None
+    add_header: Optional[str] = None
+    maxtime: Optional[int] = None
     raw_args: Optional[List[str]] = None
 
 class MetasploitConfig(BaseModel):
     modules: List[str] = ["auxiliary/scanner/http/http_version"]
+    preset: Optional[str] = None
+    threads: Optional[int] = None
+    verbose: Optional[bool] = None
     raw_args: Optional[List[str]] = None
 
 class OpenVASConfig(BaseModel):
@@ -56,6 +95,92 @@ class OpenVASConfig(BaseModel):
 
 class WappalyzerConfig(BaseModel):
     enabled: bool = True
+    recursive: Optional[bool] = None
+    max_urls: Optional[int] = None
+    max_depth: Optional[int] = None
+    probe: Optional[str] = None               # none, basic, full
+    no_scripts: Optional[bool] = None
+    no_redirect: Optional[bool] = None
+    user_agent: Optional[str] = None
+    raw_args: Optional[List[str]] = None
+
+class WhoisConfig(BaseModel):
+    enabled: bool = True
+    raw_args: Optional[List[str]] = None
+
+class WhatWebConfig(BaseModel):
+    aggression: int = 1
+    max_threads: Optional[int] = None
+    follow_redirect: Optional[str] = None     # never, http-only, meta-only, same-site, always
+    user_agent: Optional[str] = None
+    plugins: Optional[str] = None
+    grep: Optional[str] = None
+    proxy: Optional[str] = None
+    verbose: Optional[bool] = None
+    raw_args: Optional[List[str]] = None
+
+class DirsearchConfig(BaseModel):
+    extensions: str = "php,html,js,txt"
+    exclude_extensions: Optional[str] = None
+    threads: int = 50
+    recursive: Optional[bool] = None
+    recursion_depth: Optional[int] = None
+    force_extensions: Optional[bool] = None
+    exclude_status: Optional[str] = None
+    include_status: Optional[str] = None
+    follow_redirects: Optional[bool] = None
+    wordlist: Optional[str] = None
+    headers: Optional[str] = None
+    user_agent: Optional[str] = None
+    random_agent: Optional[bool] = None
+    cookie: Optional[str] = None
+    timeout: Optional[int] = None
+    prefixes: Optional[str] = None
+    suffixes: Optional[str] = None
+    raw_args: Optional[List[str]] = None
+
+class WfuzzConfig(BaseModel):
+    wordlist: str = "common.txt"
+    hide_codes: str = "404"
+    hide_lines: Optional[str] = None
+    hide_words: Optional[str] = None
+    hide_chars: Optional[str] = None
+    show_codes: Optional[str] = None
+    show_lines: Optional[str] = None
+    show_words: Optional[str] = None
+    show_chars: Optional[str] = None
+    filter_expr: Optional[str] = None
+    hide_regex: Optional[str] = None
+    show_regex: Optional[str] = None
+    threads: Optional[int] = None
+    follow_redirects: Optional[bool] = None
+    headers: Optional[str] = None
+    post_data: Optional[str] = None
+    proxy: Optional[str] = None
+    verbose: Optional[bool] = None
+    raw_args: Optional[List[str]] = None
+
+class DalfoxConfig(BaseModel):
+    blind_url: Optional[str] = None
+    headers: Optional[str] = None
+    cookie: Optional[str] = None
+    method: Optional[str] = None              # GET, POST, PUT
+    data: Optional[str] = None
+    param: Optional[str] = None
+    delay: Optional[int] = None
+    worker: Optional[int] = None
+    timeout: Optional[int] = None
+    waf_evasion: Optional[bool] = None
+    deep_domxss: Optional[bool] = None
+    custom_payload: Optional[str] = None
+    only_poc: Optional[bool] = None
+    silence: Optional[bool] = None
+    proxy: Optional[str] = None
+    raw_args: Optional[List[str]] = None
+
+class GrypeConfig(BaseModel):
+    scope: str = "Squashed"
+    raw_args: Optional[List[str]] = None
 
 class ScannerConfig(BaseModel):
     enabled: bool = True
@@ -68,7 +193,13 @@ class ScannerConfigs(BaseModel):
     nikto: Optional[NiktoConfig] = NiktoConfig()
     metasploit: Optional[MetasploitConfig] = MetasploitConfig()
     openvas: Optional[OpenVASConfig] = OpenVASConfig()
+    whois: Optional[WhoisConfig] = WhoisConfig()
     wappalyzer: Optional[WappalyzerConfig] = WappalyzerConfig()
+    whatweb: Optional[WhatWebConfig] = WhatWebConfig()
+    dirsearch: Optional[DirsearchConfig] = DirsearchConfig()
+    wfuzz: Optional[WfuzzConfig] = WfuzzConfig()
+    dalfox: Optional[DalfoxConfig] = DalfoxConfig()
+    grype: Optional[GrypeConfig] = GrypeConfig()
 
 class ScanStartRequest(BaseModel):
     target: str
@@ -80,6 +211,7 @@ class ScanStartRequest(BaseModel):
 class ChatMessageRequest(BaseModel):
     message: str
     history: Optional[List[Dict[str, str]]] = []
+    context_job_ids: Optional[List[str]] = []
 
 class ChatMessageResponse(BaseModel):
     response: str
@@ -197,7 +329,7 @@ def start_scan(
     
     selected_scanners = []
     if not request.scanners:
-        selected_scanners = ["nmap", "nuclei", "nikto", "zap", "wappalyzer", "metasploit", "openvas"]
+        selected_scanners = ["nmap", "nuclei", "nikto", "zap", "wappalyzer", "metasploit", "openvas", "whois", "whatweb", "dirsearch", "wfuzz", "dalfox", "grype"]
     elif isinstance(request.scanners, list):
         selected_scanners = request.scanners
     elif isinstance(request.scanners, dict):
@@ -288,7 +420,12 @@ async def send_chat_message(
     request: ChatMessageRequest,
     user: User = Depends(get_current_user)
 ):
-    response = await chat_assistant_service.get_response_async(request.message, request.history)
+    # FIX: Pass context_job_ids to the service
+    response = await chat_assistant_service.get_response_async(
+        request.message, 
+        request.history, 
+        request.context_job_ids
+    )
     return ChatMessageResponse(response=response)
 
 @router.post("/chat/stream")
@@ -297,7 +434,12 @@ async def stream_chat_response(
     user: User = Depends(get_current_user)
 ):
     async def event_generator():
-        async for chunk in chat_assistant_service.stream_response(request.message, request.history):
+        # FIX: Pass context_job_ids to the service
+        async for chunk in chat_assistant_service.stream_response(
+            request.message, 
+            request.history, 
+            request.context_job_ids
+        ):
             yield chunk
             await asyncio.sleep(0.01)
 
@@ -434,7 +576,6 @@ def get_assets(
 
     return filtered_assets[skip : skip + limit]
 
-
 @router.get("/vulnerabilities", response_model=List[VulnerabilityResponse])
 @cache(expire=60)
 def get_vulnerabilities(
@@ -458,7 +599,10 @@ def get_vulnerabilities(
         
         for v in vulns:
             # --- Extract Data ---
-            cve = v.get("cve") or v.get("enrichment", {}).get("cve_id") or "N/A"
+            # FIX: Safely access enrichment data
+            enrichment = v.get("enrichment") or {}
+            
+            cve = v.get("cve") or enrichment.get("cve_id") or "N/A"
             title = v.get("title", "Unknown")
             tool_name = v.get("tool", "Unknown")
             sev = v.get("severity", "info").title()
@@ -476,11 +620,14 @@ def get_vulnerabilities(
                     continue
             
             # --- Map Data ---
-            cvss_raw = v.get("cvss_score") or v.get("enrichment", {}).get("nvd_data", {}).get("score")
+            # FIX: Safely access nvd_data
+            nvd_data = enrichment.get("nvd_data") or {}
+            
+            cvss_raw = v.get("cvss_score") or nvd_data.get("score")
             try: cvss = float(cvss_raw) if cvss_raw else 0.0
             except (ValueError, TypeError): cvss = 0.0
 
-            description = v.get("description") or v.get("enrichment", {}).get("nvd_data", {}).get("description") or "No description."
+            description = v.get("description") or nvd_data.get("description") or "No description."
 
             all_vulns.append(VulnerabilityResponse(
                 id=uuid.uuid4(), cve=cve, title=title,
@@ -502,6 +649,35 @@ def get_job_history(
         JobHistoryResponse(
             job_id=job.id, target=job.target, status=job.status,
             created_at=str(job.created_at), scanners_used=job.scanners_requested or []
+        )
+        for job in jobs
+    ]
+
+class ActiveJobResponse(BaseModel):
+    job_id: uuid.UUID
+    target: str
+    status: str
+    created_at: str
+    scanners_requested: List[str]
+    tool_status: Dict[str, str]
+
+@router.get("/jobs/active", response_model=List[ActiveJobResponse])
+def get_active_jobs(
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Returns all pending/running jobs with their per-scanner tool_status."""
+    jobs = session.exec(
+        select(Job)
+        .where(col(Job.status).in_(["pending", "running"]))
+        .order_by(Job.created_at.desc())
+    ).all()
+    return [
+        ActiveJobResponse(
+            job_id=job.id, target=job.target, status=job.status,
+            created_at=str(job.created_at),
+            scanners_requested=job.scanners_requested or [],
+            tool_status=job.tool_status or {}
         )
         for job in jobs
     ]

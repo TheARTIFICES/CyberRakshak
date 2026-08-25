@@ -21,6 +21,7 @@ numpy
 redis
 fastapi-cache2[redis]
 playwright
+tldextract
 
 # --- SECURITY ---
 passlib
@@ -33,3 +34,10 @@ fastapi-mail
 matplotlib
 scipy
 httpx
+
+# --- RAG Support ---
+faiss-cpu
+
+# --- Testing (backend/tests/) ---
+pytest
+pytest-asyncio

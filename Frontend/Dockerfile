@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # FIX: Use 'install' to generate lockfile if missing/mismatched
-RUN npm install
+RUN npm install --no-audit --no-fund && npm cache clean --force
 
 COPY . .
 EXPOSE 5173

@@ -105,6 +105,7 @@ interface VulnerabilityResponse {
 }
 
 interface JobHistoryResponse {
+  id?: string;
   job_id: string;
   target: string;
   status: string;
@@ -131,6 +132,7 @@ interface ReportResponse {
 interface ChatMessageRequest {
   message: string;
   history?: { role: "user" | "assistant"; content: string }[];
+  context_job_ids?: string[];
 }
 
 interface ChatMessageResponse {
@@ -247,6 +249,20 @@ export const getJobHistory = async (skip: number = 0, limit: number = 100): Prom
   return apiCall<JobHistoryResponse[]>(`/jobs?skip=${skip}&limit=${limit}`);
 };
 
+// Active Jobs API (returns running/pending jobs with tool_status)
+export interface ActiveJobResponse {
+  job_id: string;
+  target: string;
+  status: string;
+  created_at: string;
+  scanners_requested: string[];
+  tool_status: Record<string, string>;
+}
+
+export const getActiveJobs = async (): Promise<ActiveJobResponse[]> => {
+  return apiCall<ActiveJobResponse[]>('/jobs/active');
+};
+
 // Report APIs
 export const getReports = async (
   skip: number = 0, 
@@ -270,22 +286,24 @@ export const sendChatMessage = async (message: string): Promise<string> => {
 
 export async function* streamChatResponse(
   message: string, 
-  history: { role: "user" | "assistant"; content: string }[] = []
+  history: { role: "user" | "assistant"; content: string }[] = [],
+  contextJobIds: string[] = [] // Added parameter
 ): AsyncGenerator<string, void, unknown> {
   
   const url = `${API_BASE_URL}/chat/stream`;
-  console.log("🚀 Starting Stream Request to:", url); // DEBUG LOG
+  console.log("Starting Stream Request to:", url); 
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message, history }),
+    // Include context_job_ids in body
+    body: JSON.stringify({ message, history, context_job_ids: contextJobIds }),
   });
 
   if (!response.ok) {
-    console.error("❌ Stream Request Failed:", response.status);
+    console.error("Stream Request Failed:", response.status);
     throw new Error(`API call failed: ${response.status} ${response.statusText}`);
   }
   
@@ -297,23 +315,19 @@ export async function* streamChatResponse(
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        console.log("✅ Stream Complete");
-        break;
-      }
+      if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      console.log("📦 Chunk Received:", chunk); // DEBUG LOG
       yield chunk;
     }
   } catch (err) {
-    console.error("🔥 Stream Error:", err);
+    console.error("Stream Error:", err);
   } finally {
     reader.releaseLock();
   }
 }
 
 export const getThreatIntelSummary = async (): Promise<ThreatIntelSummaryResponse> => {
-  return apiCall<ThreatIntelSummaryResponse>("/threat-intel/summary", "GET");
+  return apiCall<ThreatIntelSummaryResponse>("/threat-intel/summary");
 };
 
 export const getThreatIntelFeed = async (
@@ -323,7 +337,7 @@ export const getThreatIntelFeed = async (
 ): Promise<VulnerabilityMetadata[]> => {
   const params = new URLSearchParams({ skip: skip.toString(), limit: limit.toString() });
   serializeFilters(params, filters);
-  return apiCall<VulnerabilityMetadata[]>(`/threat-intel/feed?${params.toString()}`, "GET");
+  return apiCall<VulnerabilityMetadata[]>(`/threat-intel/feed?${params.toString()}`);
 };
 
 export const getReportStats = async (): Promise<ReportStatsResponse> => {
@@ -339,6 +353,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
   return apiCall<Notification[]>('/notifications');
 };
 
-export const markNotificationRead = async (id: string): Promise<void> => {
+export const markNotificationRead = async (_id: string): Promise<void> => {
   return Promise.resolve(); // Placeholder, implement if backend supports it
 };
+

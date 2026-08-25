@@ -1,5 +1,12 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
+    logging: *default-logging
     image: postgres:15
     container_name: sih-postgres
     environment:
@@ -7,7 +14,7 @@ services:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_DB: sih_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -18,6 +25,7 @@ services:
       retries: 5
 
   rabbitmq:
+    logging: *default-logging
     image: rabbitmq:3-management
     container_name: sih-rabbitmq
     ports:
@@ -35,6 +43,7 @@ services:
 
   # --- Redis for Caching ---
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     container_name: sih-redis
     ports:
@@ -45,6 +54,7 @@ services:
   # -------------------------
 
   backend:
+    logging: *default-logging
     build:
       context: ./backend  # <--- CHANGED: Point to backend dir
       dockerfile: Dockerfile.api
@@ -56,8 +66,7 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
-      - GEMINI_API_KEY=AIzaSyBfqflb-Z9ND6aGCzYZBVfzptg9_DHLSuE
-      - GEMINI_MODEL=gemini-2.5-flash
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
     volumes:
       - ./backend:/app
     depends_on:
@@ -72,6 +81,7 @@ services:
     restart: always
 
   celery-worker:
+    logging: *default-logging
     build:
       context: ./backend # <--- CHANGED
       dockerfile: Dockerfile.worker
@@ -95,6 +105,7 @@ services:
     restart: always
 
   frontend:
+    logging: *default-logging
     build:
       context: ./Frontend
       dockerfile: Dockerfile
@@ -109,6 +120,7 @@ services:
       - backend
 
   wappalyzer:
+    logging: *default-logging
     build:
       context: ./backend # <--- CHANGED
       dockerfile: Dockerfile.wappalyzer
@@ -118,6 +130,7 @@ services:
     restart: "no"
 
   gvm-tools:
+    logging: *default-logging
     build:
       context: ./backend # <--- CHANGED
       dockerfile: Dockerfile.gvm-tools
@@ -127,12 +140,14 @@ services:
     restart: "no"
 
   metasploit:
+    logging: *default-logging
     image: metasploitframework/metasploit-framework
     container_name: sih-metasploit-cache
     entrypoint: ["echo", "Metasploit image pulled."]
     restart: "no"
 
   qdrant:
+    logging: *default-logging
     image: qdrant/qdrant:latest
     container_name: sih-qdrant
     ports:
@@ -142,16 +157,68 @@ services:
     restart: always
 
   nginx:
+    logging: *default-logging
     image: nginx:latest
     container_name: sih-nginx
     ports:
-      - "80:80" # Expose Port 80 to the world
+      - "8080:80" # Expose Port 80 to the world via 8080 on the host
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: always
     depends_on:
       - frontend
       - backend
+
+  whois:
+    logging: *default-logging
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.whois
+    image: local/whois
+    container_name: sih-whois-builder
+    entrypoint: ["echo", "Whois image built."]
+    restart: "no"
+
+  whatweb:
+    logging: *default-logging
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.whatweb
+    image: local/whatweb
+    container_name: sih-whatweb-builder
+    entrypoint: ["echo", "WhatWeb image built."]
+    restart: "no"
+
+  dirsearch:
+    logging: *default-logging
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dirsearch
+    image: local/dirsearch
+    container_name: sih-dirsearch-builder
+    entrypoint: ["echo", "Dirsearch image built."]
+    restart: "no"
+
+  wfuzz:
+    logging: *default-logging
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.wfuzz
+    image: local/wfuzz
+    container_name: sih-wfuzz-builder
+    entrypoint: ["echo", "Wfuzz image built."]
+    restart: "no"
+
+  dalfox:
+    logging: *default-logging
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dalfox
+    image: local/dalfox
+    container_name: sih-dalfox-builder
+    entrypoint: ["/app/dalfox", "version"]
+    restart: "no"
+
 
 volumes:
   postgres_data:

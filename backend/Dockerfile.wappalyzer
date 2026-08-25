@@ -1,15 +1,15 @@
 FROM python:3.11-slim
 
 # Install Chromium and dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python-Wappalyzer
 # We install from git to get the latest version
-RUN pip install git+https://github.com/chorsley/python-Wappalyzer.git
-RUN pip install click
+RUN pip install --no-cache-dir git+https://github.com/chorsley/python-Wappalyzer.git
+RUN pip install --no-cache-dir click
 
 # Create a wrapper script
 WORKDIR /app

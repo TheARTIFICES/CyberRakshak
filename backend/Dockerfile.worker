@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # === FIX 2: Install Docker Client (DooD pattern) ===
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
     curl \
@@ -15,18 +15,18 @@ RUN echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
   $(lsb_release -cs) stable" | \
   tee /etc/apt/sources.list.d/docker.list > /dev/null
-RUN apt-get update && apt-get install -y docker-ce-cli
+RUN apt-get update && apt-get install -y --no-install-recommends docker-ce-cli && rm -rf /var/lib/apt/lists/*
 # === END FIX 2 ===
 
 # 2. Set up Python environment
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 3. setup graph 
-RUN pip install playwright
-RUN playwright install --with-deps chromium
+RUN pip install --no-cache-dir playwright
+RUN playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/* /root/.cache/pip
 
 # 4. Run the pre-start script and then the worker
 # CHANGED: Removed '-P solo' and added '--concurrency 4'
