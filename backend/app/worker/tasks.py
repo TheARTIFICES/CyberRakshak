@@ -22,9 +22,14 @@ from app.enrichment import get_cisa_kev_data, enrich_vulnerability
 from app.utils.nvd_sync import sync_nvd
 from app.utils.exploitdb import sync_exploitdb
 from app.utils.cisa_sync import sync_cisa_kev
-from app.utils.mailer import send_scan_email 
 from app.reporting import generate_pdf_report
 from app.graph import generate_graph_image
+from app.models import (
+    Organization, BusinessUnit, Asset, AssetControl,
+    RiskSnapshot, RiskDriver, RiskModelRun, MitigationAction,
+    MitigationStatus, AuditLog
+)
+from app.risk import calculate_asset_fair_risk, compute_provenance_input_hash
 
 # Disable self-signed cert warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -1005,7 +1010,182 @@ def run_scan_task(self, job_id: str, scanners: Dict[str, Any]):
         session.add(job)
         session.commit()
         session.refresh(job)
-        
+
+        # --- AUTO-DISCOVERY ASSET UPSERT & FAIR RISK COMPUTATION HOOK ---
+        try:
+            # 1. Upsert Asset into PostgreSQL Inventory
+            host_info = normalized_data.get("host_info", {})
+            ip_val = host_info.get("ip", job.target)
+            hostname_val = host_info.get("hostname", job.target)
+
+            # Check if default Organization and BusinessUnit exist; create if missing
+            org = session.query(Organization).first()
+            if not org:
+                org = Organization(name="Enterprise Master Tenant", sector="BFSI")
+                session.add(org)
+                session.commit()
+                session.refresh(org)
+
+            bu = session.query(BusinessUnit).filter(BusinessUnit.org_id == org.id).first()
+            if not bu:
+                bu = BusinessUnit(org_id=org.id, name="Core Digital Infrastructure", revenue_share=0.40, criticality="High")
+                session.add(bu)
+                session.commit()
+                session.refresh(bu)
+
+            # Find or create Asset
+            asset = session.query(Asset).filter((Asset.ip_address == ip_val) | (Asset.name == job.target)).first()
+            if not asset:
+                asset = Asset(
+                    bu_id=bu.id,
+                    name=job.target,
+                    ip_address=ip_val,
+                    hostname=hostname_val,
+                    asset_type="Web Application Server",
+                    criticality="Tier-2",
+                    business_value_inr=15000000.0,
+                    records_count=5000,
+                    data_sensitivity="PII",
+                    exposure="Internet-facing" if ("." in job.target and not job.target.startswith("192.168")) else "Internal"
+                )
+                session.add(asset)
+                session.commit()
+                session.refresh(asset)
+
+                # Initialize standard baseline controls
+                default_controls = [
+                    AssetControl(asset_id=asset.id, control_type="MFA", is_enforced=True, effectiveness=0.85, telemetry_source="ScanHeuristic"),
+                    AssetControl(asset_id=asset.id, control_type="EDR", is_enforced=False, effectiveness=0.0, telemetry_source="ScanHeuristic"),
+                    AssetControl(asset_id=asset.id, control_type="WAF", is_enforced=False, effectiveness=0.0, telemetry_source="ScanHeuristic"),
+                    AssetControl(asset_id=asset.id, control_type="Backups", is_enforced=True, effectiveness=0.75, telemetry_source="ScanHeuristic")
+                ]
+                for c in default_controls:
+                    session.add(c)
+                session.commit()
+
+            # 2. Query Active Controls for Asset
+            ctrl_records = session.query(AssetControl).filter(AssetControl.asset_id == asset.id).all()
+            controls_dict_list = [
+                {"control_type": c.control_type, "is_enforced": c.is_enforced, "effectiveness": c.effectiveness}
+                for c in ctrl_records
+            ]
+
+            # 3. Compute FAIR Quantitative Risk Engine Output
+            asset_dict = {
+                "id": str(asset.id),
+                "name": asset.name,
+                "exposure": asset.exposure,
+                "criticality": asset.criticality,
+                "asset_type": asset.asset_type,
+                "business_value_inr": asset.business_value_inr,
+                "records_count": asset.records_count,
+                "data_sensitivity": asset.data_sensitivity
+            }
+
+            risk_res = calculate_asset_fair_risk(
+                asset_dict=asset_dict,
+                vulnerabilities=enriched_vulns,
+                controls=controls_dict_list,
+                org_name=org.name,
+                bu_name=bu.name
+            )
+
+            # 4. Save RiskSnapshot
+            snapshot = RiskSnapshot(
+                org_id=org.id,
+                job_id=job.id,
+                asset_id=asset.id,
+                expected_annual_loss_inr=risk_res["expected_annual_loss_inr"],
+                eal_low_inr=risk_res["eal_low_inr"],
+                eal_high_inr=risk_res["eal_high_inr"],
+                var_95_inr=risk_res["var_95_inr"],
+                enterprise_risk_score=risk_res["enterprise_risk_score"],
+                total_asset_value_inr=asset.business_value_inr,
+                total_findings_count=risk_res["total_findings_count"],
+                critical_findings_count=risk_res["critical_findings_count"]
+            )
+            session.add(snapshot)
+            session.commit()
+            session.refresh(snapshot)
+
+            # 5. Save RiskDrivers & RiskModelRun
+            for d in risk_res["risk_drivers"]:
+                driver_rec = RiskDriver(
+                    snapshot_id=snapshot.id,
+                    parent_driver_id=d.get("parent_driver_id"),
+                    level=d.get("level", "finding"),
+                    label=d.get("label", ""),
+                    cve_id=d.get("cve_id"),
+                    asset_id=asset.id,
+                    contribution_inr=d.get("contribution_inr", 0.0),
+                    cvss_score=d.get("cvss_score"),
+                    epss_score=d.get("epss_score")
+                )
+                session.add(driver_rec)
+
+            model_run = RiskModelRun(
+                snapshot_id=snapshot.id,
+                risk_model_version="v2.5.0",
+                cost_benchmark_version="IN-2026.1",
+                input_hash=risk_res["input_hash"]
+            )
+            session.add(model_run)
+
+            # 6. Save Proposed Mitigation Actions
+            for act in risk_res["candidate_actions"]:
+                mitig = MitigationAction(
+                    asset_id=asset.id,
+                    cve_id=act.get("cve_id"),
+                    title=act.get("title", ""),
+                    description=act.get("description", ""),
+                    action_type=act.get("action_type", "patch"),
+                    estimated_cost_inr=act.get("estimated_cost_inr", 0.0),
+                    estimated_reduction_inr=act.get("estimated_reduction_inr", 0.0),
+                    estimated_rosi=act.get("estimated_rosi", 0.0),
+                    status="proposed",
+                    baseline_snapshot_id=snapshot.id
+                )
+                session.add(mitig)
+
+            # 7. Closed-Loop Rescan Verification Hook
+            pending_verifications = session.query(MitigationAction).filter(
+                MitigationAction.asset_id == asset.id,
+                MitigationAction.status == MitigationStatus.REMEDIATED
+            ).all()
+
+            for p_act in pending_verifications:
+                if p_act.baseline_snapshot_id:
+                    baseline_snap = session.get(RiskSnapshot, p_act.baseline_snapshot_id)
+                    if baseline_snap:
+                        measured_reduction = max(0.0, baseline_snap.expected_annual_loss_inr - snapshot.expected_annual_loss_inr)
+                        cost = p_act.estimated_cost_inr or 1.0
+                        actual_rosi = (measured_reduction - cost) / cost
+                        
+                        p_act.status = MitigationStatus.VERIFIED
+                        p_act.post_remediation_snapshot_id = snapshot.id
+                        p_act.measured_reduction_inr = measured_reduction
+                        p_act.actual_rosi = actual_rosi
+                        session.add(p_act)
+
+                        audit = AuditLog(
+                            org_id=org.id,
+                            event_type="REMEDIATION_VERIFIED",
+                            details={
+                                "action_id": str(p_act.id),
+                                "title": p_act.title,
+                                "measured_reduction_inr": measured_reduction,
+                                "actual_rosi": actual_rosi
+                            },
+                            job_id=job.id
+                        )
+                        session.add(audit)
+
+            session.commit()
+            print(f"[CyberRakshak Vitta] FAIR Risk Snapshot created: EAL = INR {risk_res['expected_annual_loss_inr']:,.2f}, Score = {risk_res['enterprise_risk_score']}/100")
+
+        except Exception as e:
+            print(f"[CyberRakshak Vitta] Post-scan risk calculation hook error: {e}")
+
         # --- NOTIFICATIONS & EMAILS ---
         try:
             notif = Notification(

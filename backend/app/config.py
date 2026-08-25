@@ -12,9 +12,9 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    DATABASE_URL: str
-    RABBITMQ_URL: str
-    REDIS_URL: str = "redis://redis:6379"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///cyberrakshak.db")
+    RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379")
 
     # --- EMAIL CONFIG ---
     MAIL_USERNAME: str = os.getenv("MAIL_USERNAME", "theartifices25@gmail.com")
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     MAIL_PORT: int = int(os.getenv("MAIL_PORT", 587))
     MAIL_SERVER: str = os.getenv("MAIL_SERVER", "smtp.gmail.com")
     MAIL_FROM_NAME: str = "CYRA from CyberRakshak"
-    ALIENVAULT_API_KEY: str = os.getenv("ALIENVAULT_API_KEY", "f0bcbec1ee4e\ce0b15a4693950b2932a889fd45f37b3fbb9b0221f22bd8a7462")
+    ALIENVAULT_API_KEY: str = os.getenv("ALIENVAULT_API_KEY", "f0bcbec1ee4ece0b15a4693950b2932a889fd45f37b3fbb9b0221f22bd8a7462")
 
     # --- SECURITY CONFIG ---
     SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"

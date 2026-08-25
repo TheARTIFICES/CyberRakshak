@@ -23,16 +23,24 @@ fastapi-cache2[redis]
 playwright
 tldextract
 
-# --- SECURITY ---
+# --- Optimization & Math ---
+pulp>=2.8.0
+scipy
+numpy
+networkx
+
+# --- SECURITY & ENCRYPTION ---
 passlib
 bcrypt==3.2.2
 python-jose[cryptography]
 python-multipart
+cryptography>=42.0.0
 
 # --- Notifications & Reporting ---
 fastapi-mail
 matplotlib
-scipy
+reportlab
+fpdf2
 httpx
 
 # --- RAG Support ---

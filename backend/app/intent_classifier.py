@@ -24,6 +24,10 @@ class IntentType(Enum):
     PRIVESC = "privesc"
     TROUBLESHOOTING = "troubleshooting"
     PLANNING = "planning"
+    FINANCIAL_RISK = "financial_risk"
+    OPTIMIZATION = "optimization"
+    SIMULATION = "simulation"
+    COMPLIANCE = "compliance"
     GENERAL = "general"
 
 
@@ -155,6 +159,27 @@ INTENT_PATTERNS: Dict[IntentType, list] = {
         r"\brecommend", r"\badvise", r"\bprioritiz", r"\bwhat\s+should\s+i",
         r"\bhow\s+to\s+proceed", r"\bwhat.*next\b", r"\bbest\b.*\b(way|approach|method)\b",
         r"\bwhere\s+do\s+i\s+start", r"\bwhat\s+now\b", r"\bhow\s+should\b",
+    ],
+    IntentType.FINANCIAL_RISK: [
+        r"\beal\b", r"\bexpected\s+annual\s+loss", r"\bfinancial\s+risk", r"\bvar\b",
+        r"\bvalue\s+at\s+risk", r"\bloss\b", r"\bexposure\b", r"\bquantif",
+        r"\bhow\s+much\s+(could|would|will)\s+it\s+cost", r"\bbreach\s+cost",
+        r"\bfinancial\s+impact", r"\brisk\s+score\b", r"\bdrivers?\b",
+    ],
+    IntentType.OPTIMIZATION: [
+        r"\bbudget\b", r"\ballocat", r"\bspend\b", r"\bcost\b", r"\binvest",
+        r"\brosi\b", r"\breturn\s+on\s+security", r"\bpure\b", r"\bpulp\b",
+        r"\boptimizer\b", r"\boptimiz", r"\bhow\s+to\s+spend", r"\bpareto\b",
+        r"\bknee\s+point", r"\bmaximize\s+reduction",
+    ],
+    IntentType.SIMULATION: [
+        r"\bwhat\s+if\b", r"\bsimulat", r"\bscenario\b", r"\bif\s+we\s+(patch|deploy|enforce)",
+        r"\bmfa\s+everywhere", r"\bwhat\s+happens\s+if", r"\bmodel\s+(delay|ransomware)",
+    ],
+    IntentType.COMPLIANCE: [
+        r"\bcompliance\b", r"\bdpdp\b", r"\brbi\b", r"\bsebi\b", r"\bcscrf\b",
+        r"\bcis\b", r"\bnist\b", r"\biso\s*27001", r"\bpenalt(y|ies)", r"\baudit\b",
+        r"\bregulat", r"\bgap\s+analysis",
     ],
 }
 

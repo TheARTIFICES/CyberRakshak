@@ -100,7 +100,8 @@ async def generate_llm_response(prompt: str) -> str:
         logger.error(f"Generation Connection Error: {e}")
         return f"Error: {str(e)}"
 
-# Deprecated: Keep purely for legacy compatibility if needed, 
-# but ChatAssistantService will now use the functions above.
+# --- useless code block start ---
+# Reason: Deprecated legacy shim unreferenced across all modules; superseded by generate_llm_response
 async def generate_ai_response(payload: dict) -> str:
     return await generate_llm_response(json.dumps(payload))
+# --- useless code block end ---

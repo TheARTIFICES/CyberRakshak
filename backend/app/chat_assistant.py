@@ -25,6 +25,7 @@ from app.models import Job
 from app.rag import rag, RAGResult
 from app.intent_classifier import classify_intent, IntentType, IntentResult
 from app.rag_logger import rag_logger
+from app.rag_tools import execute_whitelisted_tool, TOOL_CALL_WHITELIST
 from sqlmodel import Session, select
 from app.database import engine
 from starlette.concurrency import run_in_threadpool
@@ -256,7 +257,26 @@ USER: {user_query}
             f"Trivial: {intent_result.is_trivial}, Meta: {intent_result.is_meta_query}"
         )
 
-        # 3. Handle trivial/meta queries (skip RAG)
+        # 3. Check for Financial / Tool-Calling Intents
+        tool_context_str = ""
+        for intent in intent_result.primary_intents:
+            try:
+                if intent == IntentType.FINANCIAL_RISK:
+                    t_res = execute_whitelisted_tool("risk_tool")
+                    tool_context_str += f"\n[Live Quantitative Risk Engine Telemetry]\n{json.dumps(t_res, indent=2)}\n"
+                elif intent == IntentType.OPTIMIZATION:
+                    t_res = execute_whitelisted_tool("optimizer_tool", budget_inr=500000.0)
+                    tool_context_str += f"\n[Live PuLP Optimizer Capital Allocation Matrix]\n{json.dumps(t_res, indent=2)}\n"
+                elif intent == IntentType.SIMULATION:
+                    t_res = execute_whitelisted_tool("simulation_tool", scenario_name="MFA_EVERYWHERE")
+                    tool_context_str += f"\n[Live Scenario Simulation Workbench]\n{json.dumps(t_res, indent=2)}\n"
+                elif intent == IntentType.COMPLIANCE:
+                    t_res = execute_whitelisted_tool("compliance_tool")
+                    tool_context_str += f"\n[Live Regulatory Compliance Posture]\n{json.dumps(t_res, indent=2)}\n"
+            except Exception as e:
+                logger.warning(f"Error executing AI tool for intent {intent}: {e}")
+
+        # 4. Handle trivial/meta queries (skip RAG)
         if intent_result.is_trivial:
             latency_ms = (time.perf_counter() - start_time) * 1000
             rag_logger.log_request(
@@ -275,10 +295,10 @@ USER: {user_query}
             )
             return self._get_capabilities_response()
 
-        # 4. Get Embedding (Remote GPU)
+        # 5. Get Embedding (Remote GPU)
         embedding = await get_remote_embedding(intent_result.normalized_query)
 
-        # 5. FAISS Search (Local CPU — single unified index)
+        # 6. FAISS Search (Local CPU — single unified index)
         rag_results: List[RAGResult] = []
         if embedding and rag.is_available():
             rag_results = rag.search(embedding, k=5)
@@ -286,7 +306,7 @@ USER: {user_query}
         elif not rag.is_available():
             logger.warning("RAG index not available — generating without context")
 
-        # 6. Dedup + Token Budget
+        # 7. Dedup + Token Budget
         recent_doc_ids = self._get_recent_doc_ids(conversation_id)
         rag_results = self._deduplicate_results(rag_results, recent_doc_ids)
         rag_results = self._truncate_to_budget(rag_results)
@@ -298,7 +318,10 @@ USER: {user_query}
         ]
         self._update_recent_doc_ids(conversation_id, doc_ids)
 
-        # 7. Prompt Assembly
+        if tool_context_str:
+            scan_context["tool_engine_results"] = tool_context_str
+
+        # 8. Prompt Assembly
         final_prompt = self._build_structured_prompt(
             user_message, access_level, scan_context, rag_results, history,
         )

@@ -28,10 +28,7 @@ origins = [
     "http://cyberrakshak.govt.hu",
     "https://cyberrakshak.govt.hu",
     "http://cyberrakshak.govt.hu:5173",
-    "https://cyberrakshak.govt.hu:5173",
-    "http://*.cyberrakshak.govt.hu",
-    "https://*.cyberrakshak.govt.hu",
-    "*"
+    "https://cyberrakshak.govt.hu:5173"
 ]
 
 app.add_middleware(
