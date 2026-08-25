@@ -1,44 +1,127 @@
-import { FlaskConical, GitCompareArrows } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, FlaskConical } from "lucide-react";
+import Card from "../components/ui/Card";
+import PageHeader from "../components/ui/PageHeader";
+import EmptyState from "../components/ui/EmptyState";
+import ScenarioPicker from "../components/simulation/ScenarioPicker";
+import ScenarioImpactPanel from "../components/simulation/ScenarioImpactPanel";
+import {
+  getSimulationScenarios,
+  runScenarioSimulation,
+  type ScenarioTemplate,
+  type SimulationResult,
+} from "../services/api";
 
 /**
- * Scenario Simulator — before/after EAL & VaR comparison for named
- * what-if scenarios (MFA rollout, patch deployment, segmentation, delayed
- * remediation, new campaign). Must call the same FAIR engine as the live
- * dashboard with overridden parameters, never a parallel calculation.
+ * Scenario Simulator — what-if modeling against the live FAIR engine.
  *
- * Status: SCAFFOLD. Blocked on:
- *   - backend/app/risk/            (Roadmap Phase 2)
- *   - backend/app/simulation/      (Roadmap Phase 5)
- * Target endpoint once live: POST /api/simulation/run
- * See docs/audits/gap-audit.md, Roadmap Phase 8.
+ * Every scenario in the catalogue is executed once on mount so each card can
+ * show its real baseline→projected impact without requiring a click. That also
+ * makes selection instant: opening the full breakdown reads the already-fetched
+ * result rather than issuing another POST /simulation/run.
  */
 const ScenarioSimulator = () => {
+  const [scenarios, setScenarios] = useState<ScenarioTemplate[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  const [previews, setPreviews] = useState<Record<string, SimulationResult>>({});
+  const [previewsLoading, setPreviewsLoading] = useState(true);
+
+  const [selected, setSelected] = useState<ScenarioTemplate | null>(null);
+
+  const loadPreviews = useCallback(async (catalog: ScenarioTemplate[]) => {
+    setPreviewsLoading(true);
+    const settled = await Promise.allSettled(
+      catalog.map((scenario) => runScenarioSimulation(scenario.id).then((r) => [scenario.id, r] as const))
+    );
+
+    const next: Record<string, SimulationResult> = {};
+    settled.forEach((outcome) => {
+      if (outcome.status === "fulfilled") {
+        const [id, result] = outcome.value;
+        next[id] = result;
+      } else {
+        console.error("Scenario preview failed:", outcome.reason);
+      }
+    });
+    setPreviews(next);
+    setPreviewsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const fetchCatalog = async () => {
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        const data = await getSimulationScenarios();
+        setScenarios(data);
+        void loadPreviews(data);
+      } catch (err) {
+        console.error("Failed to load scenario catalog:", err);
+        setCatalogError("Could not reach the simulation workbench.");
+        setScenarios([]);
+        setPreviewsLoading(false);
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+    fetchCatalog();
+  }, [loadPreviews]);
+
+  const selectedResult = selected ? previews[selected.id] : undefined;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Scenario Simulator</h1>
-        <p className="opacity-70 text-sm">
-          Model the financial impact of a proposed change before committing budget to it.
-        </p>
-      </div>
+      <PageHeader
+        title="Scenario Simulator"
+        subtitle="Model the financial impact of a proposed change before committing budget — every figure comes from the same FAIR engine that powers the Dashboard, re-run against a hypothetical parameter set."
+      />
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-10 flex flex-col items-center text-center gap-3">
-        <FlaskConical className="w-10 h-10 text-purple-500" />
-        <h2 className="text-lg font-semibold">Awaiting the FAIR risk engine and simulation layer</h2>
-        <p className="text-sm opacity-70 max-w-md">
-          Scenario presets (MFA rollout, patch deployment, network segmentation, delayed remediation, a new
-          campaign) will run against{" "}
-          <code className="font-mono text-xs bg-slate-100 dark:bg-slate-900 px-1.5 py-0.5 rounded">
-            backend/app/risk/engine.py
-          </code>{" "}
-          with overridden parameters once implemented — by construction, the same function the live dashboard
-          calls, so this screen's numbers can never disagree with it.
-        </p>
-        <div className="flex items-center gap-2 text-xs text-purple-600 dark:text-purple-400 mt-2">
-          <GitCompareArrows className="w-4 h-4" />
-          <span>Tracked in docs/audits/gap-audit.md — Roadmap Phases 2, 5, 8</span>
-        </div>
-      </div>
+      {catalogLoading && (
+        <Card>
+          <p className="text-sm text-slate-500 animate-pulse py-8 text-center">Loading scenario catalog…</p>
+        </Card>
+      )}
+
+      {!catalogLoading && catalogError && (
+        <Card>
+          <EmptyState icon={AlertCircle} tone="error" title="Simulation workbench unavailable" description={catalogError} />
+        </Card>
+      )}
+
+      {!catalogLoading && !catalogError && (
+        <>
+          <ScenarioPicker
+            scenarios={scenarios}
+            previews={previews}
+            previewsLoading={previewsLoading}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelected}
+          />
+
+          {!selected ? (
+            <Card>
+              <EmptyState
+                icon={FlaskConical}
+                title="Select a scenario for the full breakdown"
+                description="Each card above already shows its modeled impact. Choose one to see the baseline vs. projected comparison, ROSI, and the exact parameters applied."
+              />
+            </Card>
+          ) : selectedResult ? (
+            <ScenarioImpactPanel result={selectedResult} />
+          ) : (
+            <Card>
+              <EmptyState
+                icon={AlertCircle}
+                tone="error"
+                title="Simulation unavailable for this scenario"
+                description="The FAIR engine did not return a result for this scenario. Try another, or reload the page."
+              />
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 };

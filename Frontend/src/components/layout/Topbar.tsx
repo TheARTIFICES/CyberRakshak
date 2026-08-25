@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Bell, Sun, Moon, User, LogOut, Settings } from "lucide-react";
+import { Bell, User, LogOut, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getNotifications, markNotificationRead } from "../../services/api";
 import type { Notification } from "../../services/api";
@@ -7,7 +7,6 @@ import type { Notification } from "../../services/api";
 const Topbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -28,18 +27,19 @@ const Topbar = () => {
     "/reports": { title: "Reports", subtitle: "Centralized repository for audits and summaries." },
     "/assistant": { title: "Chat Assistant", subtitle: "Security overview and analytics." },
     "/audit-logs": { title: "Audit Logs", subtitle: "System activity and user actions." },
+    "/remediation": { title: "Remediation", subtitle: "Actionable fix guides and deployment tracking." },
+    "/investment-actions": { title: "Investment Action Board", subtitle: "Capital allocation and closed-loop remediation." },
+    "/compliance-center": { title: "Compliance Center", subtitle: "Framework-mapped posture and audit evidence export." },
+    "/scenario-simulator": { title: "Scenario Simulator", subtitle: "What-if financial impact modeling." },
+    "/board-portal": { title: "Board Portal", subtitle: "Organization-level financial risk and governance rollup." },
+    "/connectors": { title: "Connectors", subtitle: "Telemetry source status and manual sync." },
     "/settings": { title: "Settings", subtitle: "Platform configuration and preferences." },
     "/profile": { title: "User Profile", subtitle: "Manage your account details and preferences." }
   };
 
-  const currentRouteInfo = routeMapping[location.pathname] || { 
-    title: "Chat Assistant", 
-    subtitle: "Security overview and analytics" 
-  };
-
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-    document.documentElement.classList.toggle("dark");
+  const currentRouteInfo = routeMapping[location.pathname] || {
+    title: "CyberRakshak",
+    subtitle: "Security & governance portal"
   };
 
   // Close dropdowns when clicking outside
@@ -112,19 +112,15 @@ const Topbar = () => {
       {/* Right: Actions */}
       <div className="flex items-center gap-4">
         
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-300"
-        >
-          {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </button>
+        {/* Theme control lives in Settings → Preferences (relocated out of the Topbar). */}
 
         {/* Notifications Dropdown */}
         <div className="relative" ref={notifRef}>
-          <button 
+          <button
             className={`p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-300 relative ${showNotifications ? 'bg-slate-100 dark:bg-slate-800' : ''}`}
             onClick={() => setShowNotifications(!showNotifications)}
+            aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+            aria-expanded={showNotifications}
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
@@ -180,9 +176,11 @@ const Topbar = () => {
 
         {/* User Profile Dropdown */}
         <div className="relative pl-4 border-l dark:border-slate-800" ref={profileRef}>
-          <button 
+          <button
             className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg p-1 transition"
             onClick={() => setShowProfileMenu(!showProfileMenu)}
+            aria-label="Open profile menu"
+            aria-expanded={showProfileMenu}
           >
             <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
               A

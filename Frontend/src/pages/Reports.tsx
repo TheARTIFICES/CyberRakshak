@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FileText, Download, Filter, Plus, AlertTriangle, CheckCircle, ArrowDownCircle, FileStack, Clock, Loader2 } from "lucide-react";
+import { FileText, Download, Filter, Plus, AlertTriangle, AlertCircle, CheckCircle, ArrowDownCircle, FileStack, Clock, Loader2 } from "lucide-react";
 import GenerateReportModal from "../components/reports/GenerateReportModal";
 import { getReports, getReportStats, getScanReport } from "../services/api";
 
@@ -8,12 +8,13 @@ const Reports = () => {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [statusFilter, setStatusFilter] = useState("All"); // New State for Status Filter
   const [modalOpen, setModalOpen] = useState(false);
-  
+
   // Data State
   const [reports, setReports] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, completed: 0, pending: 0, failed: 0 });
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Fetch Data with Server-Side Filtering
   const fetchData = async () => {
@@ -29,8 +30,10 @@ const Reports = () => {
       ]);
       setReports(reportsData);
       setStats(statsData);
+      setLoadError(null);
     } catch (error) {
       console.error("Failed to load reports:", error);
+      setLoadError("Could not reach the backend — the report archive may be incomplete.");
     } finally {
       setLoading(false);
     }
@@ -108,8 +111,14 @@ const Reports = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#050b14] text-slate-900 dark:text-white p-6 max-w-[1600px] mx-auto">
-      
+    <div className="text-slate-900 dark:text-white max-w-[1600px] mx-auto">
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 mb-6">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
       {/* Generate Report Button */}
       <div className="flex justify-end mb-8">
         <button

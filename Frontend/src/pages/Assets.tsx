@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, Filter, Server, Monitor, Shield, AlertTriangle, CheckCircle, HelpCircle, Cloud } from "lucide-react";
+import { Search, Filter, Server, Monitor, AlertCircle, ClipboardList } from "lucide-react";
+import { Link } from "react-router-dom";
 import { getAssets } from "../services/api";
 import AssetDrawer from "../components/assets/AssetDrawer";
+import ScanCoverage from "../components/assets/ScanCoverage";
+import EmptyState from "../components/ui/EmptyState";
 
 const Assets = () => {
   // State for real data
   const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [groupBy, setGroupBy] = useState("None");
 
@@ -21,29 +25,27 @@ const Assets = () => {
       try {
         const data = await getAssets(0, 100);
         
-        // Transform API data to match the UI requirements (criticality 1-5, etc.)
+        // Transform API data to match the UI requirements (criticality 1-5 from the real risk tier)
         const transformed = data.map((item: any) => {
           let crit = 1;
-          let score = 200;
-          
-          if (item.risk === "Critical") { crit = 5; score = 850 + Math.floor(Math.random() * 150); }
-          else if (item.risk === "High") { crit = 4; score = 700 + Math.floor(Math.random() * 149); }
-          else if (item.risk === "Medium") { crit = 3; score = 500 + Math.floor(Math.random() * 199); }
-          else if (item.risk === "Low") { crit = 2; score = 300 + Math.floor(Math.random() * 199); }
-          
+          if (item.risk === "Critical") crit = 5;
+          else if (item.risk === "High") crit = 4;
+          else if (item.risk === "Medium") crit = 3;
+          else if (item.risk === "Low") crit = 2;
+
           return {
             ...item,
             criticality: crit,
-            riskScore: score,
-            missingPatches: Math.floor(Math.random() * 10), // Mocked for now if not in API
             status: "Active",
             tags: [item.cloud, item.exposure].filter(Boolean)
           };
         });
         
         setAssets(transformed);
+        setLoadError(null);
       } catch (error) {
         console.error("Failed to load assets", error);
+        setLoadError("Could not reach the backend — asset inventory may be incomplete.");
       } finally {
         setLoading(false);
       }
@@ -65,10 +67,6 @@ const Assets = () => {
   const countCrit2 = assets.filter(a => a.criticality === 2).length;
   const countCrit1 = assets.filter(a => a.criticality === 1).length;
 
-  const countLow = countCrit1 + countCrit2;
-  const countMed = countCrit3;
-  const countHigh = countCrit4;
-  const countCritical = countCrit5;
 
   // --- GROUPING LOGIC ---
   const groupedAssets = useMemo(() => {
@@ -132,11 +130,36 @@ const Assets = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f0f2f5] dark:bg-[#050b14] text-slate-800 dark:text-white p-6">
-      
-      {/* TOP ANALYTICS ROW (The Dashboard) */}
+    <div className="text-slate-800 dark:text-white">
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2 mb-6">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
+      {/* One unified empty state instead of three cards each showing a bare 0,
+          which previously read as a broken or half-loaded page. */}
+      {!loading && assets.length === 0 ? (
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-6 mb-6">
+          <EmptyState
+            icon={ClipboardList}
+            title="No assets discovered yet"
+            description="Asset criticality, scan coverage and inventory all populate from completed scans. Run a scan to build the inventory."
+            action={
+              <Link
+                to="/scan-console"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+              >
+                Run a scan from Scan Console
+              </Link>
+            }
+          />
+        </div>
+      ) : (
+      /* TOP ANALYTICS ROW (The Dashboard) */
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        
+
         {/* Card 1: Asset Criticality (SVG Bar Chart) */}
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Asset Criticality</h3>
@@ -175,41 +198,11 @@ const Assets = () => {
           </div>
         </div>
 
-        {/* Card 2: Detection Score (SVG Bar Chart) */}
-        <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Detection Score</h3>
-          <div className="w-full h-44">
-            <svg viewBox="0 0 500 220" className="w-full h-full">
-              <defs>
-                <pattern id="grid-detect" width="500" height="40" patternUnits="userSpaceOnUse">
-                  <line x1="0" y1="40" x2="500" y2="40" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" className="dark:stroke-slate-700" />
-                </pattern>
-                <linearGradient id="gd1" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#c4b5fd" /><stop offset="100%" stopColor="#ddd6fe" /></linearGradient>
-                <linearGradient id="gd2" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#a78bfa" /><stop offset="100%" stopColor="#c4b5fd" /></linearGradient>
-                <linearGradient id="gd3" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#7c3aed" /><stop offset="100%" stopColor="#a78bfa" /></linearGradient>
-                <linearGradient id="gd4" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#6d28d9" /><stop offset="100%" stopColor="#8b5cf6" /></linearGradient>
-              </defs>
-              <rect width="500" height="200" fill="url(#grid-detect)" />
-              {(() => {
-                const vals = [countLow, countMed, countHigh, countCritical];
-                const labels = ["Low", "Medium", "High", "Critical"];
-                const grads = ["url(#gd1)", "url(#gd2)", "url(#gd3)", "url(#gd4)"];
-                const maxV = Math.max(...vals, 1);
-                const barMaxH = 150;
-                return vals.map((v, i) => {
-                  const h = Math.max(8, (v / maxV) * barMaxH);
-                  const x = 55 + i * 110;
-                  return (
-                    <React.Fragment key={i}>
-                      <rect x={x} y={180 - h} width="30" height={h} fill={grads[i]} rx="4" />
-                      <text x={x + 15} y={180 - h - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{v}</text>
-                      <text x={x + 15} y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">{labels[i]}</text>
-                    </React.Fragment>
-                  );
-                });
-              })()}
-            </svg>
-          </div>
+        {/* Card 2: Scan Coverage & Freshness — a different dimension from
+            Asset Criticality, which the old "Detection Score" card duplicated. */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow">
+          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Scan Coverage &amp; Freshness</h3>
+          <ScanCoverage assets={assets} />
         </div>
 
         {/* Card 3: Total Assets (The CSS Ring) */}
@@ -234,6 +227,7 @@ const Assets = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* DATA GRID */}
       <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg shadow-sm overflow-hidden">
@@ -272,7 +266,7 @@ const Assets = () => {
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Asset Name</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Status</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Criticality</th>
-                <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Risk Score</th>
+                <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Risk</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">OS</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Missing Patches</th>
                 <th className="p-3 text-left font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider text-xs">Tags</th>
@@ -329,15 +323,20 @@ const Assets = () => {
                           </div>
                         </td>
                         <td className="p-3">
-                          <span className="border border-slate-200 dark:border-slate-600 rounded-full px-2 py-1 text-xs font-medium">
-                            {asset.riskScore}
+                          <span className={`border rounded-full px-2 py-1 text-xs font-medium ${
+                            asset.risk === "Critical" ? "border-red-300 text-red-600 dark:border-red-700 dark:text-red-400" :
+                            asset.risk === "High" ? "border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400" :
+                            asset.risk === "Medium" ? "border-yellow-300 text-yellow-600 dark:border-yellow-700 dark:text-yellow-400" :
+                            "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"
+                          }`}>
+                            {asset.risk || "Unknown"}
                           </span>
                         </td>
                         <td className="p-3 flex items-center">
                           {getOsIcon(asset.os)}
                           <span className="truncate max-w-[120px]" title={asset.os}>{asset.os}</span>
                         </td>
-                        <td className="p-3 text-slate-800 dark:text-white">{asset.missingPatches}</td>
+                        <td className="p-3 text-slate-400 dark:text-slate-500" title="Not tracked by any connected scanner yet">—</td>
                         <td className="p-3">
                           <div className="flex flex-wrap gap-1">
                             {asset.tags && asset.tags.map((tag: string, index: number) => (

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import AttackGraph from "../components/attack/AttackGraph";
 import AttackNodeDrawer from "../components/attack/AttackNodeDrawer"; // Import the Drawer
+import AttackPathExposurePanel from "../components/attack/AttackPathExposurePanel";
 import { Search, RefreshCw, AlertCircle } from "lucide-react";
-import { getJobHistory, getScanGraph } from "../services/api";
+import { getJobHistory, getScanGraph, getAttackPathExposure, type AttackPathExposure } from "../services/api";
 
 const AttackPath = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,6 +19,11 @@ const AttackPath = () => {
   // Drawer State (Lifted Up)
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<any>(null);
+
+  // Financial exposure overlay (GET /risk/attack-paths/{job_id})
+  const [exposurePaths, setExposurePaths] = useState<AttackPathExposure[]>([]);
+  const [exposureLoading, setExposureLoading] = useState(false);
+  const [exposureError, setExposureError] = useState<string | null>(null);
 
   // 1. Load Latest Job if none provided
   useEffect(() => {
@@ -59,6 +65,26 @@ const AttackPath = () => {
       setLoading(false);
     }
   };
+
+  // 2b. Fetch chained financial exposure for the same job
+  const loadExposure = async (id: string) => {
+    setExposureLoading(true);
+    setExposureError(null);
+    try {
+      const paths = await getAttackPathExposure(id);
+      setExposurePaths(paths);
+    } catch (error) {
+      console.error("Failed to fetch attack path exposure:", error);
+      setExposureError("Could not compute chained financial exposure for this scan.");
+      setExposurePaths([]);
+    } finally {
+      setExposureLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (jobId) loadExposure(jobId);
+  }, [jobId]);
 
   // 3. Handle Node Selection (From Graph or Table)
   const handleNodeSelect = (node: any) => {
@@ -114,7 +140,7 @@ const AttackPath = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#050b14] text-slate-900 dark:text-white p-6">
+    <div className="text-slate-900 dark:text-white">
       
       {/* HEADER METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -144,6 +170,11 @@ const AttackPath = () => {
           <div className="text-xs uppercase text-slate-500 dark:text-slate-400 mt-1">Total Connections</div>
         </div>
       </div>
+
+      {/* FINANCIAL EXPOSURE OVERLAY */}
+      {jobId && (
+        <AttackPathExposurePanel paths={exposurePaths} loading={exposureLoading} error={exposureError} />
+      )}
 
       {/* GRAPH VISUALIZATION */}
       <div className="h-[600px] w-full bg-slate-100 dark:bg-black/40 border border-slate-200 dark:border-white/5 rounded-xl relative overflow-hidden mb-6">
@@ -197,8 +228,8 @@ const AttackPath = () => {
               <option value="Low">Low</option>
             </select>
             
-            <button 
-              onClick={() => loadGraph(jobId)}
+            <button
+              onClick={() => { loadGraph(jobId); loadExposure(jobId); }}
               className="p-2 text-slate-500 hover:text-blue-500 transition border border-slate-200 dark:border-white/10 rounded"
               title="Refresh Graph Data"
             >

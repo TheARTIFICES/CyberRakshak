@@ -22,12 +22,20 @@ def calculate_asset_fair_risk(
     vulnerabilities: List[Dict[str, Any]],
     controls: List[Dict[str, Any]],
     org_name: str = "Enterprise Organization",
-    bu_name: str = "Core Operations"
+    bu_name: str = "Core Operations",
+    tef_multiplier: float = 1.0,
+    vuln_severity_multiplier: float = 1.0
 ) -> Dict[str, Any]:
     """
     Main FAIR Quantitative Risk Engine Pipeline.
     Calculates deterministic EAL, Monte Carlo distribution, candidate mitigations,
     and hierarchical provenance tree for an asset.
+
+    tef_multiplier / vuln_severity_multiplier default to 1.0 (no-op) for every
+    normal scan-pipeline call. They exist for the Scenario Simulation Workbench
+    (simulation/scenario_engine.py), which models threat-maturation and active-
+    campaign what-ifs that change threat frequency or exploit severity without
+    changing exposure or controls.
     """
     asset_id = str(asset_dict.get("id", uuid.uuid4()))
     asset_name = asset_dict.get("name", "Target-Asset")
@@ -39,7 +47,7 @@ def calculate_asset_fair_risk(
     data_sensitivity = asset_dict.get("data_sensitivity", "Internal")
 
     # 1. Threat Event Frequency (TEF)
-    tef = get_threat_event_frequency(exposure)
+    tef = get_threat_event_frequency(exposure) * tef_multiplier
 
     # 2. Combined Active Control Effectiveness
     control_eff = combine_control_effectiveness(controls)
@@ -62,7 +70,7 @@ def calculate_asset_fair_risk(
 
     for v in vulnerabilities:
         cve = v.get("cve", v.get("cve_id"))
-        cvss = float(v.get("cvss_score", v.get("cvss", 5.0) or 5.0))
+        cvss = min(10.0, float(v.get("cvss_score", v.get("cvss", 5.0) or 5.0)) * vuln_severity_multiplier)
         enrichment = v.get("enrichment", {})
         has_exploit = bool(enrichment.get("has_exploit", v.get("has_exploit", False)))
         is_cisa_kev = bool(enrichment.get("is_cisa_kev", v.get("is_cisa_kev", False)))

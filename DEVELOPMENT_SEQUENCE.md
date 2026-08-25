@@ -10,16 +10,20 @@ Effort notation carried over from `PRODUCT_ROADMAP.md`: S ≈ 0.5–1 day, M ≈
 
 Nothing here blocks or is blocked by anything else. If you have four engineers, start all four in parallel on day one.
 
-| Task | Effort | Owner stream |
-|---|---|---|
-| Scenario Simulator UI (`ScenarioSimulator.tsx`) | M | Frontend |
-| Compliance Center UI (`ComplianceCenter.tsx`) | M | Frontend |
-| Investment Action Board UI | M | Frontend |
-| `EALTrendChart` component | S | Frontend |
-| Begin sourcing a test Azure AD or Okta tenant | — (external lead time) | Anyone — start this today regardless of who does the connector work later, since tenant provisioning can take days |
-| RAG index availability check in the actual demo environment | S | Backend/DevOps |
+**Status: frontend/backend engineering complete.** Only the two non-code items remain.
 
-**Exit criteria:** three of four placeholder screens are live against real data; the fourth (Board Portal) is blocked on Phase 1.
+| Task | Effort | Owner stream | Status |
+|---|---|---|---|
+| Scenario Simulator UI (`ScenarioSimulator.tsx`) | M | Frontend | ✅ Done — live against `GET /simulation/scenarios` + `POST /simulation/run`, all 5 catalog scenarios (commit `d1431ab`) |
+| Compliance Center UI (`ComplianceCenter.tsx`) | M | Frontend | ✅ Done — live against `GET /compliance/scores` + `GET /compliance/export` (commit `7207b90`) |
+| Investment Action Board UI | M | Frontend | ✅ Done — live against `/investment/optimize`, `/investment/pareto`, and the approve/remediate/outcome lifecycle (commit `7d1e0c8`) |
+| `EALTrendChart` component | S | Frontend | ✅ Done — live against `GET /risk/forecast` + `GET /risk/exposure`, integrated into Dashboard (commit `d1431ab`) |
+| Begin sourcing a test Azure AD or Okta tenant | — (external lead time) | Anyone — start this today regardless of who does the connector work later, since tenant provisioning can take days | ⏳ Not started — external/ops task, outside engineering scope |
+| RAG index availability check in the actual demo environment | S | Backend/DevOps | ⚠️ Checked, found broken — `backend/rag_storage/cve_index.faiss` fails to load (`Index type ... not recognized`); chat assistant runs without retrieval context. Needs a re-export of the index file. |
+
+**Exit criteria:** three of four placeholder screens are live against real data; the fourth (Board Portal) is blocked on Phase 1. **Met** — all three (Scenario Simulator, Compliance Center, Investment Action Board) are live; Board Portal remains correctly blocked on Phase 1's org/BU scope filtering.
+
+**Engineering bonus found and fixed while building the Scenario Simulator:** `calculate_asset_fair_risk()` was missing the `tef_multiplier`/`vuln_multiplier` hooks that the `DELAY_REMEDIATION_30D` and `ACTIVE_RANSOMWARE_CAMPAIGN` scenario templates referenced, so both silently no-op'd (the "cost of delay" scenario was showing a *decrease* in EAL). Fixed in `backend/app/risk/engine.py` + `backend/app/simulation/scenario_engine.py`, verified against the live API and the full pytest suite (commit `d1431ab`).
 
 ---
 
@@ -85,7 +89,7 @@ Multi-step agent reasoning, autonomous risk analyst, SIEM/EDR/CSPM connectors be
 
 ## One-page summary for stand-ups
 
-**Phase 0 (parallel, start now):** 3 placeholder screens + EAL chart + tenant sourcing.
+**Phase 0 (parallel, start now):** 3 placeholder screens + EAL chart + tenant sourcing. ✅ Engineering done — tenant sourcing and RAG index re-export are the only open items, both non-code.
 **Phase 1 (critical path, do first regardless of team size):** scope filtering, auth fix, NLU extraction.
 **Phase 2 (now unblocked):** Board Portal, tool-call trace, login, live connector proof.
 **Phase 3 (polish):** dashboard reframe, attack-path overlay, compliance radar, connector UI, RBAC.

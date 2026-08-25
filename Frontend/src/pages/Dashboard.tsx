@@ -11,8 +11,11 @@ import UnifiedCyberScore from "../components/dashboard/UnifiedCyberScore";
 import AiInsightsPanel from "../components/dashboard/AiInsightsPanel";
 import TotalSolutionsProvided from "../components/dashboard/TotalSolutionsProvided"; // <-- Import
 import SpendCurveChart from "../components/risk/SpendCurveChart";
-import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge } from "lucide-react";
-import { getDashboardStats, getJobHistory } from "../services/api";
+import EALTrendChart from "../components/risk/EALTrendChart";
+import TopRiskDrivers from "../components/dashboard/TopRiskDrivers";
+import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge, Wallet, TrendingUp, ShieldCheck, AlertCircle } from "lucide-react";
+import { getDashboardStats, getJobHistory, getRiskExposure, type RiskExposure } from "../services/api";
+import { formatInrCompact } from "../utils/currency";
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -32,6 +35,9 @@ const Dashboard = () => {
   });
 
   const [recentScans, setRecentScans] = useState<any[]>([]);
+  const [exposure, setExposure] = useState<RiskExposure | null>(null);
+  const [exposureLoading, setExposureLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // New state for the chart
   const [solutionTrend, setSolutionTrend] = useState<{ day: string; value: number }[]>([]);
@@ -95,54 +101,121 @@ const Dashboard = () => {
 
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
+        setLoadError("Could not reach the backend — some figures below may be stale or unavailable.");
       }
     };
 
     fetchData();
+
+    const fetchExposure = async () => {
+      setExposureLoading(true);
+      try {
+        setExposure(await getRiskExposure());
+      } catch (error) {
+        console.error("Failed to fetch risk exposure:", error);
+        setExposure(null);
+        setLoadError("Could not reach the backend — some figures below may be stale or unavailable.");
+      } finally {
+        setExposureLoading(false);
+      }
+    };
+    fetchExposure();
   }, []);
 
   return (
     <div className="space-y-6">
 
-      {/* KPI SECTION */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      {loadError && (
+        <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 rounded-lg px-4 py-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {loadError}
+        </div>
+      )}
+
+      {/* MONEY-FIRST HERO — the headline is always a rupee figure, never a severity count */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <KpiCard
-          title="Total Vulnerabilities"
-          value={stats.total_vulnerabilities.toLocaleString()}
-          icon={Bug}
+          title="Expected Annual Loss"
+          value={exposureLoading ? "…" : formatInrCompact(exposure?.expected_annual_loss_inr ?? 0)}
+          icon={Wallet}
           color="#dc2626"
+          tooltip="The single most important number on this dashboard: modeled annual financial loss from the live FAIR risk engine (GET /api/risk/exposure)."
         />
         <KpiCard
-          title="Critical Findings"
-          value={stats.critical_findings.toLocaleString()}
-          icon={AlertTriangle}
-          color="#ea580c"
+          title="Value at Risk (95%)"
+          value={exposureLoading ? "…" : formatInrCompact(exposure?.var_95_inr ?? 0)}
+          icon={TrendingUp}
+          color="#7c3aed"
+          tooltip="95th-percentile annual loss from the Monte Carlo simulation — the tail-risk figure a CFO or board member cares about."
         />
         <KpiCard
-          title="High Findings"
-          value={stats.high_findings.toLocaleString()}
-          icon={Flame}
-          color="#f97316"
-        />
-        <KpiCard
-          title="Asset Criticality Score"
-          value={stats.asset_criticality_score.toLocaleString()}
-          icon={ShieldHalf}
-          color="#0ea5e9"
-        />
-        <KpiCard
-          title="Open Ports Detected"
-          value={stats.open_ports_detected.toLocaleString()}
-          icon={Radio}
-          color="#6366f1"
-        />
-        <KpiCard
-          title="CyRa Score"
-          value={stats.unified_cyber_score}
-          icon={Gauge}
-          color="#16a34a"
+          title="Enterprise Risk Score"
+          value={exposureLoading ? "…" : `${exposure?.enterprise_risk_score ?? 0}/100`}
+          icon={ShieldCheck}
+          color="#059669"
+          tooltip="Composite 0–100 posture score (100 = pristine, 0 = catastrophic). Replaces raw severity counts as the headline health metric."
         />
       </section>
+
+      {/* QUANTITATIVE RISK & CAPITAL ALLOCATION SPEND FRONTIER */}
+      <section>
+        <EALTrendChart />
+      </section>
+
+      {/* Analyst-level breakdown behind the headline EAL — Dashboard-only,
+          deliberately absent from Board Governance. */}
+      <section>
+        <TopRiskDrivers />
+      </section>
+
+      <section>
+        <SpendCurveChart />
+      </section>
+
+      {/* TECHNICAL FINDINGS SUMMARY — demoted below the financial headline; still real, just not the lead story */}
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
+          Technical Findings Summary
+        </h2>
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+          <KpiCard
+            title="Total Vulnerabilities"
+            value={stats.total_vulnerabilities.toLocaleString()}
+            icon={Bug}
+            color="#dc2626"
+          />
+          <KpiCard
+            title="Critical Findings"
+            value={stats.critical_findings.toLocaleString()}
+            icon={AlertTriangle}
+            color="#ea580c"
+          />
+          <KpiCard
+            title="High Findings"
+            value={stats.high_findings.toLocaleString()}
+            icon={Flame}
+            color="#f97316"
+          />
+          <KpiCard
+            title="Asset Criticality Score"
+            value={stats.asset_criticality_score.toLocaleString()}
+            icon={ShieldHalf}
+            color="#0ea5e9"
+          />
+          <KpiCard
+            title="Open Ports Detected"
+            value={stats.open_ports_detected.toLocaleString()}
+            icon={Radio}
+            color="#6366f1"
+          />
+          <KpiCard
+            title="CyRa Score"
+            value={stats.unified_cyber_score}
+            icon={Gauge}
+            color="#16a34a"
+          />
+        </section>
+      </div>
 
       {/* MAIN WIDGET GRID */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -162,11 +235,6 @@ const Dashboard = () => {
             cloud: stats.cloud_assets
           }} />
         </div>
-      </section>
-
-      {/* QUANTITATIVE RISK & CAPITAL ALLOCATION SPEND FRONTIER */}
-      <section>
-        <SpendCurveChart />
       </section>
 
       {/* SECOND ROW */}

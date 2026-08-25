@@ -728,6 +728,10 @@ $$\lambda_{\text{LEF}} = \text{TEF} \times \text{Vulnerability} \times (1 - \tex
 4. **Annual Breach Probability ($P_{\text{annual}}$)** — Bounded probability of $\ge 1$ breach event per year:
    $$P_{\text{annual}} = 1 - e^{-\lambda_{\text{LEF}}}$$
 
+### Scenario-Only Threat-Maturation Hooks
+
+`calculate_asset_fair_risk()` accepts two optional multipliers, both defaulting to `1.0` (no effect on the live scan pipeline): `tef_multiplier` scales $\text{TEF}$ directly, `vuln_severity_multiplier` scales each finding's CVSS before the Vulnerability Factor is computed (capped at 10.0). They exist solely for `simulation/scenario_engine.py`'s what-if scenarios that model threat-maturation or an active campaign without changing exposure or controls (e.g. `DELAY_REMEDIATION_30D`, `ACTIVE_RANSOMWARE_CAMPAIGN`) — the Scenario Simulator's baseline run always uses the defaults.
+
 ---
 
 ## 8. Vectorized Monte Carlo Uncertainty & Loss Simulation
@@ -1021,10 +1025,10 @@ User Query ──► Intent Classification (intent_classifier.py)
 
 | Method | Endpoint | Description | Query / Body Params | Response Structure |
 | :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/api/risk/exposure` | Returns EAL point, bounds, 95% VaR, and Risk Score | `asset_id?: str`, `bu_id?: str` | `{ score: int, expected_annual_loss_inr: float, eal_low_inr: float, eal_high_inr: float, var_95_inr: float }` |
+| `GET` | `/api/risk/exposure` | Returns EAL point, bounds, 95% VaR, and Risk Score | none (latest `RiskSnapshot`) | `{ expected_annual_loss_inr: float, eal_low_inr: float, eal_high_inr: float, var_95_inr: float, enterprise_risk_score: int, total_asset_value_inr: float, total_findings_count: int, critical_findings_count: int, monitored_assets_count: int, business_units_count: int, currency: "INR" }` |
 | `GET` | `/api/risk/provenance/{snapshot_id}` | Hierarchical HMAC-SHA256 provenance tree | `snapshot_id: UUID` | `{ snapshot_id: UUID, provenance_tree: RiskDriverNode }` |
 | `GET` | `/api/risk/attack-paths/{job_id}` | Multi-hop chained attack paths with joint exposure | `job_id: UUID` | `List[{ path_id: str, path: [], joint_probability: float, financial_exposure_inr: float }]` |
-| `GET` | `/api/risk/forecast` | Historical trajectory & 30/60/90-day cost of delay | `asset_id?: str` | `{ cost_of_delay_30d_inr: float, cost_of_delay_60d_inr: float, cost_of_delay_90d_inr: float }` |
+| `GET` | `/api/risk/forecast` | 30/60/90-day EAL projection & cost of delay assuming no remediation | none (last 10 `RiskSnapshot`s) | `{ current_eal_inr: float, trend_direction: "increasing"\|"decreasing"\|"stable", historical_delta_pct: float, monthly_growth_rate_pct: float, projections: { day_30_eal_inr, day_60_eal_inr, day_90_eal_inr }, cost_of_delay: { day_30_inr, day_60_inr, day_90_inr } }` |
 | `POST`| `/api/investment/optimize` | Solves 0-1 PuLP MILP capital allocation | `{ budget_inr: float }` | `{ selected_actions: [], total_cost_inr: float, total_reduction_inr: float, overall_rosi: float }` |
 | `GET` | `/api/investment/pareto` | 10-point Pareto Spend Curve with Knee-Point detection | `max_budget_inr?: float` | `{ curve_points: [], knee_point: {} }` |
 | `POST`| `/api/investment/actions/{id}/approve` | State machine: proposed -> approved | `id: UUID` | `MitigationAction` |
@@ -1063,10 +1067,11 @@ The frontend is a single-page application built on **React 19**, **Vite 7.2**, *
 │   └── / ──────────────────► HomePage.tsx (3D Robot Hero, Particle Field, Showcase, Sovereignty)
 │
 └── App Layout (Enterprise Security & Governance Portal)
-    ├── /dashboard ─────────► Dashboard.tsx (Executive Summary, Spend Curve, Risk & Asset Charts)
+    ├── /dashboard ─────────► Dashboard.tsx (Executive Summary, EAL Trend & Cost of Inaction, Spend Curve, Risk & Asset Charts)
     ├── /board-portal ──────► BoardPortal.tsx (C-Suite Governance, BU Rollup, VaR & Evidence PDF)
-    ├── /scenario-simulator ─► ScenarioSimulator.tsx (Interactive What-If Modeling Workbench)
+    ├── /scenario-simulator ─► ScenarioSimulator.tsx (Interactive What-If Modeling Workbench — 5 catalog scenarios, before/after EAL & VaR)
     ├── /compliance-center ─► ComplianceCenter.tsx (6 Framework Scorecards, DPDP Fines & Audit PDF)
+    ├── /investment-actions ─► InvestmentActionBoard.tsx (MILP-Funded Action Board — Pin/Approve/Remediate Lifecycle)
     ├── /scan-console ──────► ScanConsole.tsx (Live Multi-Scanner Orchestrator & Tool Statuses)
     ├── /vulnerabilities ───► Vulnerabilities.tsx (Filterable CVE Table, CVSS, Exploit Status)
     ├── /assets ────────────► Assets.tsx (Asset Inventory, Exposure, OS, Criticality Tiers)
@@ -1080,6 +1085,13 @@ The frontend is a single-page application built on **React 19**, **Vite 7.2**, *
     ├── /profile ───────────► UserProfile.tsx (User Identity, Role Badges & Access Keys)
     └── /graph-snapshot/:jobId ► GraphSnapshot.tsx (Headless Render Target for Playwright)
 ```
+
+### Reusable, Self-Contained Chart Components
+
+Several money-first visualizations own their own data fetching, loading/error state, and card chrome, so they drop into any page with no props — currently used on `Dashboard.tsx`, intended for `BoardPortal.tsx` once Phase 1's org/BU scope filtering lands:
+
+* **`components/risk/EALTrendChart.tsx`** — plots today's Expected Annual Loss (`GET /api/risk/exposure`) against the real 30/60/90-day projections (`GET /api/risk/forecast`), i.e. "cost of inaction if nothing is remediated." Deliberately does not render a historical time series, since no endpoint persists queryable past `RiskSnapshot`s.
+* **`components/risk/SpendCurveChart.tsx`** — the MILP capital-allocation Pareto frontier (`GET /api/investment/pareto`) with knee-point (optimal spend) marker.
 
 ---
 
