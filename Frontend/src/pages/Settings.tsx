@@ -3,6 +3,7 @@ import SettingsTabs from "../components/settings/SettingsTabs";
 import ProfileTab from "../components/settings/ProfileTab";
 import PreferencesTab from "../components/settings/PreferencesTab";
 import SecurityTab from "../components/settings/SecurityTab";
+import ConnectorsTab from "../components/settings/ConnectorsTab";
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState("profile");
@@ -26,6 +27,7 @@ const Settings = () => {
           {activeTab === "profile" && <ProfileTab />}
           {activeTab === "preferences" && <PreferencesTab />}
           {activeTab === "security" && <SecurityTab />}
+          {activeTab === "connectors" && <ConnectorsTab />}
         </div>
       </div>
 

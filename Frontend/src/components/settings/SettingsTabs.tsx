@@ -4,6 +4,7 @@ const tabs = [
   { key: "profile", label: "Profile" },
   { key: "preferences", label: "Preferences" },
   { key: "security", label: "Security" },
+  { key: "connectors", label: "Connectors" },
 ];
 
 const SettingsTabs = ({ active, setActive }: any) => {
