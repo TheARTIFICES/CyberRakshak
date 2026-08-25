@@ -14,7 +14,8 @@ import {
   ExternalLink,
   Building2,
   Sliders,
-  Scale
+  Scale,
+  Wallet
 } from "lucide-react";
 
 // Import the logo
@@ -25,6 +26,7 @@ const menu = [
   { path: "/board-portal", label: "Board Governance", icon: Building2 },
   { path: "/scenario-simulator", label: "Scenario Simulator", icon: Sliders },
   { path: "/compliance-center", label: "Compliance & Audit", icon: Scale },
+  { path: "/investment-actions", label: "Investment Action Board", icon: Wallet },
   { path: "/scan-console", label: "Scan Console", icon: Scan },
   { path: "/vulnerabilities", label: "Vulnerabilities", icon: Bug },
   { path: "/assets", label: "Asset Inventory", icon: ClipboardCheck },

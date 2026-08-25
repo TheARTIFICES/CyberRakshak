@@ -19,6 +19,7 @@ import GraphSnapshot from "../pages/GraphSnapshot";
 import BoardPortal from "../pages/BoardPortal";
 import ScenarioSimulator from "../pages/ScenarioSimulator";
 import ComplianceCenter from "../pages/ComplianceCenter";
+import InvestmentActionBoard from "../pages/InvestmentActionBoard";
 
 export const AppRouter = () => {
   return (
@@ -36,6 +37,7 @@ export const AppRouter = () => {
           <Route path="/board-portal" element={<BoardPortal />} />
           <Route path="/scenario-simulator" element={<ScenarioSimulator />} />
           <Route path="/compliance-center" element={<ComplianceCenter />} />
+          <Route path="/investment-actions" element={<InvestmentActionBoard />} />
           <Route path="/scan-console" element={<ScanConsole />} />
           <Route path="/vulnerabilities" element={<Vulnerabilities />} />
           <Route path="/assets" element={<Assets />} />

@@ -377,3 +377,87 @@ export const getSpendCurve = async (maxBudgetInr: number = 2000000.0): Promise<S
   return apiCall<SpendCurveResponse>(`/investment/pareto?${params.toString()}`);
 };
 
+// Investment Action Board — capital allocation optimizer + closed-loop lifecycle
+export interface MitigationActionCandidate {
+  id: string;
+  title: string;
+  action_type: string;
+  cve_id?: string | null;
+  estimated_cost_inr: number;
+  estimated_reduction_inr: number;
+  estimated_rosi: number;
+}
+
+export interface OptimizeResponse {
+  selected_actions: MitigationActionCandidate[];
+  total_cost_inr: number;
+  total_reduction_inr: number;
+  overall_rosi: number;
+  budget_utilized_pct: number;
+  budget_limit_inr: number;
+  status: string;
+}
+
+export const runCapitalAllocation = async (
+  budgetInr: number,
+  mandatoryControlIds?: string[]
+): Promise<OptimizeResponse> => {
+  return apiCall<OptimizeResponse>("/investment/optimize", {
+    method: "POST",
+    body: JSON.stringify({
+      budget_inr: budgetInr,
+      mandatory_control_ids: mandatoryControlIds?.length ? mandatoryControlIds : null,
+    }),
+  });
+};
+
+export type MitigationStatus =
+  | "proposed"
+  | "approved"
+  | "in_progress"
+  | "remediated"
+  | "rescanned"
+  | "verified";
+
+export interface MitigationActionRecord {
+  id: string;
+  asset_id: string;
+  cve_id?: string | null;
+  title: string;
+  description: string;
+  action_type: string;
+  estimated_cost_inr: number;
+  estimated_reduction_inr: number;
+  estimated_rosi: number;
+  status: MitigationStatus;
+  measured_reduction_inr?: number | null;
+  actual_rosi?: number | null;
+  approved_at?: string | null;
+  remediated_at?: string | null;
+  verified_at?: string | null;
+}
+
+export interface MitigationOutcome {
+  action_id: string;
+  title: string;
+  status: MitigationStatus;
+  estimated_cost_inr: number;
+  estimated_reduction_inr: number;
+  estimated_rosi: number;
+  measured_reduction_inr?: number | null;
+  actual_rosi?: number | null;
+  is_verified: boolean;
+}
+
+export const getMitigationOutcome = async (actionId: string): Promise<MitigationOutcome> => {
+  return apiCall<MitigationOutcome>(`/investment/actions/${actionId}/outcome`);
+};
+
+export const approveMitigationAction = async (actionId: string): Promise<MitigationActionRecord> => {
+  return apiCall<MitigationActionRecord>(`/investment/actions/${actionId}/approve`, { method: "POST" });
+};
+
+export const markActionRemediated = async (actionId: string): Promise<MitigationActionRecord> => {
+  return apiCall<MitigationActionRecord>(`/investment/actions/${actionId}/remediate`, { method: "POST" });
+};
+
