@@ -11,7 +11,10 @@ import {
   MessageCircle, 
   Activity,
   Zap,
-  ExternalLink
+  ExternalLink,
+  Building2,
+  Sliders,
+  Scale
 } from "lucide-react";
 
 // Import the logo
@@ -19,6 +22,9 @@ import logo from '../../assets/indian logo.png';
 
 const menu = [
   { path: "/dashboard", label: "Dashboard", icon: Home },
+  { path: "/board-portal", label: "Board Governance", icon: Building2 },
+  { path: "/scenario-simulator", label: "Scenario Simulator", icon: Sliders },
+  { path: "/compliance-center", label: "Compliance & Audit", icon: Scale },
   { path: "/scan-console", label: "Scan Console", icon: Scan },
   { path: "/vulnerabilities", label: "Vulnerabilities", icon: Bug },
   { path: "/assets", label: "Asset Inventory", icon: ClipboardCheck },

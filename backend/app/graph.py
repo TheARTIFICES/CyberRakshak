@@ -1,6 +1,5 @@
 import networkx as nx
 from typing import Dict, Any
-from playwright.sync_api import sync_playwright
 import time
 
 def build_attack_graph(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -158,6 +157,7 @@ def generate_graph_image(job_id: str, output_path: str):
     if not job_id: return None
 
     try:
+        from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             # Launch browser (headless)
             browser = p.chromium.launch(headless=True, args=['--no-sandbox'])

@@ -10,6 +10,7 @@ import RecentActivity from "../components/dashboard/RecentActivity";
 import UnifiedCyberScore from "../components/dashboard/UnifiedCyberScore";
 import AiInsightsPanel from "../components/dashboard/AiInsightsPanel";
 import TotalSolutionsProvided from "../components/dashboard/TotalSolutionsProvided"; // <-- Import
+import SpendCurveChart from "../components/risk/SpendCurveChart";
 import { Bug, AlertTriangle, Flame, ShieldHalf, Radio, Gauge } from "lucide-react";
 import { getDashboardStats, getJobHistory } from "../services/api";
 
@@ -161,6 +162,11 @@ const Dashboard = () => {
             cloud: stats.cloud_assets
           }} />
         </div>
+      </section>
+
+      {/* QUANTITATIVE RISK & CAPITAL ALLOCATION SPEND FRONTIER */}
+      <section>
+        <SpendCurveChart />
       </section>
 
       {/* SECOND ROW */}

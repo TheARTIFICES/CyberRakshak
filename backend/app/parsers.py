@@ -521,6 +521,8 @@ def parse_dalfox(file_path: str) -> List[Dict[str, Any]]:
     
     return findings
 
+# --- useless code block start ---
+# Reason: parse_grype is unreferenced in tasks.py and unused across the active scanning pipeline
 def parse_grype(file_path: str) -> List[Dict[str, Any]]:
     """Parses Grype JSON output."""
     findings = []
@@ -563,3 +565,4 @@ def parse_grype(file_path: str) -> List[Dict[str, Any]]:
         logger.error(f"Error reading Grype file {file_path}: {e}")
     
     return findings
+# --- useless code block end ---
