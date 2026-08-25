@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, Filter, Server, Monitor, Shield, AlertTriangle, AlertCircle, CheckCircle, HelpCircle, Cloud } from "lucide-react";
+import { Search, Filter, Server, Monitor, Shield, AlertTriangle, AlertCircle, CheckCircle, HelpCircle, Cloud, ClipboardList } from "lucide-react";
+import { Link } from "react-router-dom";
 import { getAssets } from "../services/api";
 import AssetDrawer from "../components/assets/AssetDrawer";
+import ScanCoverage from "../components/assets/ScanCoverage";
+import EmptyState from "../components/ui/EmptyState";
 
 const Assets = () => {
   // State for real data
@@ -139,9 +142,28 @@ const Assets = () => {
         </div>
       )}
 
-      {/* TOP ANALYTICS ROW (The Dashboard) */}
+      {/* One unified empty state instead of three cards each showing a bare 0,
+          which previously read as a broken or half-loaded page. */}
+      {!loading && assets.length === 0 ? (
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow p-6 mb-6">
+          <EmptyState
+            icon={ClipboardList}
+            title="No assets discovered yet"
+            description="Asset criticality, scan coverage and inventory all populate from completed scans. Run a scan to build the inventory."
+            action={
+              <Link
+                to="/scan-console"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+              >
+                Run a scan from Scan Console
+              </Link>
+            }
+          />
+        </div>
+      ) : (
+      /* TOP ANALYTICS ROW (The Dashboard) */
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        
+
         {/* Card 1: Asset Criticality (SVG Bar Chart) */}
         <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Asset Criticality</h3>
@@ -180,41 +202,11 @@ const Assets = () => {
           </div>
         </div>
 
-        {/* Card 2: Detection Score (SVG Bar Chart) */}
-        <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Detection Score</h3>
-          <div className="w-full h-44">
-            <svg viewBox="0 0 500 220" className="w-full h-full">
-              <defs>
-                <pattern id="grid-detect" width="500" height="40" patternUnits="userSpaceOnUse">
-                  <line x1="0" y1="40" x2="500" y2="40" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3 3" className="dark:stroke-slate-700" />
-                </pattern>
-                <linearGradient id="gd1" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#c4b5fd" /><stop offset="100%" stopColor="#ddd6fe" /></linearGradient>
-                <linearGradient id="gd2" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#a78bfa" /><stop offset="100%" stopColor="#c4b5fd" /></linearGradient>
-                <linearGradient id="gd3" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#7c3aed" /><stop offset="100%" stopColor="#a78bfa" /></linearGradient>
-                <linearGradient id="gd4" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="#6d28d9" /><stop offset="100%" stopColor="#8b5cf6" /></linearGradient>
-              </defs>
-              <rect width="500" height="200" fill="url(#grid-detect)" />
-              {(() => {
-                const vals = [countLow, countMed, countHigh, countCritical];
-                const labels = ["Low", "Medium", "High", "Critical"];
-                const grads = ["url(#gd1)", "url(#gd2)", "url(#gd3)", "url(#gd4)"];
-                const maxV = Math.max(...vals, 1);
-                const barMaxH = 150;
-                return vals.map((v, i) => {
-                  const h = Math.max(8, (v / maxV) * barMaxH);
-                  const x = 55 + i * 110;
-                  return (
-                    <React.Fragment key={i}>
-                      <rect x={x} y={180 - h} width="30" height={h} fill={grads[i]} rx="4" />
-                      <text x={x + 15} y={180 - h - 8} fill="#1e293b" fontSize="11" textAnchor="middle" fontWeight="bold" className="dark:fill-white">{v}</text>
-                      <text x={x + 15} y="198" fill="#64748b" fontSize="10" textAnchor="middle" className="dark:fill-slate-400">{labels[i]}</text>
-                    </React.Fragment>
-                  );
-                });
-              })()}
-            </svg>
-          </div>
+        {/* Card 2: Scan Coverage & Freshness — a different dimension from
+            Asset Criticality, which the old "Detection Score" card duplicated. */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow">
+          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3">Scan Coverage &amp; Freshness</h3>
+          <ScanCoverage assets={assets} />
         </div>
 
         {/* Card 3: Total Assets (The CSS Ring) */}
@@ -239,6 +231,7 @@ const Assets = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* DATA GRID */}
       <div className="bg-white dark:bg-[#1e293b] dark:border-slate-700 border border-gray-200 rounded-lg shadow-sm overflow-hidden">
