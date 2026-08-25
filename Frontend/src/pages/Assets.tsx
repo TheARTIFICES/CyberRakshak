@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, Filter, Server, Monitor, Shield, AlertTriangle, AlertCircle, CheckCircle, HelpCircle, Cloud, ClipboardList } from "lucide-react";
+import { Search, Filter, Server, Monitor, AlertCircle, ClipboardList } from "lucide-react";
 import { Link } from "react-router-dom";
 import { getAssets } from "../services/api";
 import AssetDrawer from "../components/assets/AssetDrawer";
@@ -67,10 +67,6 @@ const Assets = () => {
   const countCrit2 = assets.filter(a => a.criticality === 2).length;
   const countCrit1 = assets.filter(a => a.criticality === 1).length;
 
-  const countLow = countCrit1 + countCrit2;
-  const countMed = countCrit3;
-  const countHigh = countCrit4;
-  const countCritical = countCrit5;
 
   // --- GROUPING LOGIC ---
   const groupedAssets = useMemo(() => {

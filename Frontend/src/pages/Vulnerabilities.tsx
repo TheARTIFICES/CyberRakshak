@@ -36,7 +36,6 @@ const Vulnerabilities = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
-  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Fetch dashboard stats once on mount
