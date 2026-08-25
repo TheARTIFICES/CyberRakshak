@@ -94,8 +94,21 @@ const Sidebar = () => {
       className={`bg-white dark:bg-slate-950 shadow-md h-screen sticky top-0 z-50 transition-all duration-300 flex flex-col
       ${collapsed ? "w-16" : "w-64"}`}
     >
-      <div className="h-20 flex items-center justify-center py-6 flex-shrink-0">
-        <img src={logo} alt="CyberRakshak Logo" className="w-14 h-14 object-contain" />
+      {/* The logo scales with the rail. At a fixed size it sat well inside the
+          64px collapsed rail but read as undersized against the 256px expanded
+          panel, so both the header height and the mark grow together. */}
+      <div
+        className={`flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
+          collapsed ? "h-20" : "h-28"
+        }`}
+      >
+        <img
+          src={logo}
+          alt="CyberRakshak Logo"
+          className={`object-contain transition-all duration-300 ${
+            collapsed ? "w-12 h-12" : "w-20 h-20"
+          }`}
+        />
       </div>
 
       <nav className="flex-1 overflow-y-auto pb-2">
