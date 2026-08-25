@@ -1,0 +1,41 @@
+# Code ownership by module boundary. Update the usernames below to match
+# actual team assignments — placeholders reflect the domain split from
+# docs/audits/gap-audit.md's roadmap, not real GitHub handles yet.
+
+# Frontend
+/Frontend/                     @frontend-team
+
+# Backend core
+/backend/app/api.py            @backend-team
+/backend/app/models.py         @backend-team
+/backend/app/auth.py           @backend-team
+/backend/app/worker/           @backend-team
+
+# FAIR risk engine
+/backend/app/risk/             @risk-engine-team
+
+# Compliance
+/backend/app/compliance/       @compliance-team
+
+# Simulation
+/backend/app/simulation/       @risk-engine-team
+
+# Telemetry connectors
+/backend/app/connectors/       @backend-team
+
+# AI / RAG
+/backend/app/rag.py            @ai-team
+/backend/app/rag_tools/        @ai-team
+/backend/app/intent_classifier.py  @ai-team
+/backend/app/chat_assistant.py @ai-team
+/ai_service/                   @ai-team
+
+# Infrastructure
+/docker-compose.yml            @infra-team
+/nginx/                        @infra-team
+/backend/Dockerfile.*          @infra-team
+
+# Documentation
+/docs/                         @maintainers
+/README.md                     @maintainers
+/DOCUMENTATION.md              @maintainers
