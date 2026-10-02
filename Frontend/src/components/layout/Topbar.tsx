@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Bell, User, LogOut, Settings } from "lucide-react";
+import { Bell, Sun, Moon, User, LogOut, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getNotifications, markNotificationRead } from "../../services/api";
 import type { Notification } from "../../services/api";
+import useTheme from "../../hooks/useTheme";
 
 const Topbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -110,9 +112,20 @@ const Topbar = () => {
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-4">
-        
-        {/* Theme control lives in Settings → Preferences (relocated out of the Topbar). */}
+      <div className="flex items-center gap-3">
+        {/* Quick Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-300 focus:outline-none"
+        >
+          {isDark ? (
+            <Sun className="w-5 h-5 text-amber-400 hover:text-amber-300 transition-colors" />
+          ) : (
+            <Moon className="w-5 h-5 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors" />
+          )}
+        </button>
 
         {/* Notifications Dropdown */}
         <div className="relative" ref={notifRef}>
